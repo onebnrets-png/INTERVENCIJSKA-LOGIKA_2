@@ -1,6 +1,7 @@
 // hooks/useGeneration.ts
 // ═══════════════════════════════════════════════════════════════ 
 // AI content generation — sections, fields, summaries.
+// v7.66 — 2026-03-24 — EO-147e: overrideRefs parameter in injectReferencesToText
 // v7.65 — 2026-03-24 — EO-147d: Pre-clean refs in injectReferencesToText
 // v7.64 — 2026-03-23 — EO-147: injectReferencesToText helper
 // v7.63 — 2026-03-23 — EO-146: Add chapterPrefix to collectReferencesFromSection
@@ -1338,17 +1339,19 @@ export async function injectReferencesToText(
   sectionKey: string,
   sectionData: any,
   projectData: any,
-  language: 'en' | 'si'
+  language: 'en' | 'si',
+  overrideRefs?: any[]  // EO-147e: caller can pass pre-cleaned refs to avoid race condition
 ): Promise<{ updatedSectionData: any; newRefs: any[] }> {
   const { generateSectionContent: genRaw } = await import('../services/geminiService.ts');
   const chapterPrefix = _getChapterPrefix(sectionKey);
-  // EO-147d: Pre-clean old refs for this section — _runFullReferencePipeline Step 1 also handles this,
-  // but we clean here so nextNum calculation is correct and pipeline starts fresh
-  const existingRefs = Array.isArray(projectData.references) ? projectData.references : [];
-  const cleanedRefs = existingRefs.filter((ref: any) => !ref.sectionKey || ref.sectionKey !== sectionKey);
-  const removedCount = existingRefs.length - cleanedRefs.length;
+  // EO-147e: Use overrideRefs if provided (caller pre-cleaned), otherwise clean from projectData
+  const baseRefs = overrideRefs !== undefined
+    ? overrideRefs
+    : Array.isArray(projectData.references) ? projectData.references : [];
+  const cleanedRefs = baseRefs.filter((ref: any) => !ref.sectionKey || ref.sectionKey !== sectionKey);
+  const removedCount = baseRefs.length - cleanedRefs.length;
   if (removedCount > 0) {
-    console.log('[EO-147d] injectReferencesToText: pre-cleaned ' + removedCount + ' old refs for "' + sectionKey + '"');
+    console.log('[EO-147e] injectReferencesToText: safety-cleaned ' + removedCount + ' old refs for "' + sectionKey + '"');
   }
   const existingChapterRefs = cleanedRefs.filter((r: any) => r.chapterPrefix === chapterPrefix);
   const nextNum = existingChapterRefs.length + 1;
