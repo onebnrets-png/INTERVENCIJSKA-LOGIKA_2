@@ -482,41 +482,50 @@ const App = () => {
           console.warn('[EO-147b] URL verification failed (non-fatal):', verErr?.message);
         }
 
-        // ── EO-148: Repair broken URLs ─────────────────────────────────
-        const brokenRefs = (pm.projectData?.references || []).filter(
-          (r: any) => r.verificationStatus === 'broken' || r.urlVerified === false
-        );
+        // ── EO-148b: Repair broken URLs — uses verResults directly (no stale state) ──
+if (verResults && verResults.length > 0) {
+  const brokenFromVerification = verResults.filter(
+    (vr: any) => !vr.urlVerified || 
+      ['broken', 'not-found', 'not_found', 'timeout', 'error', 'failed'].includes(vr.verificationStatus)
+  );
 
-        if (brokenRefs.length > 0) {
-          console.log(`[EO-148] Found ${brokenRefs.length} broken refs — starting repair...`);
+  if (brokenFromVerification.length > 0) {
+    // Map verification results back to full ref objects for repair
+    const brokenFullRefs = brokenFromVerification.map((vr: any) => {
+      const fullRef = newRefs.find((nr: any) => nr.id === vr.id);
+      return fullRef ? { ...fullRef, ...vr } : vr;
+    }).filter(Boolean);
 
-          try {
-            const { repairBrokenReferenceUrls } = await import('./hooks/useGeneration');
-            const repairedRefs = await repairBrokenReferenceUrls(brokenRefs, language);
+    console.log(`[EO-148b] Found ${brokenFullRefs.length} broken/not-found refs — starting repair...`);
 
-            pm.setProjectData((prev: any) => {
-              const refs = [...(prev.references || [])];
-              for (const repaired of repairedRefs) {
-                const idx = refs.findIndex(
-                  (r: any) => r.inlineMarker === repaired.inlineMarker && r.sectionKey === repaired.sectionKey
-                );
-                if (idx !== -1) {
-                  refs[idx] = { ...refs[idx], ...repaired };
-                }
-              }
-              console.log(`[EO-148] Repaired refs merged. Total refs: ${refs.length}`);
-              return { ...prev, references: refs };
-            });
+    try {
+      const { repairBrokenReferenceUrls } = await import('./hooks/useGeneration');
+      const repairedRefs = await repairBrokenReferenceUrls(brokenFullRefs, language);
 
-            const groundingFixed = repairedRefs.filter((r: any) => r.verificationMethod === 'google-search-grounding').length;
-            const scholarFixed = repairedRefs.filter((r: any) => r.verificationMethod === 'google-scholar-fallback').length;
-            console.log(`[EO-148] Repair complete: ${groundingFixed} via grounding, ${scholarFixed} via Scholar`);
-
-          } catch (err) {
-            console.warn('[EO-148] Repair failed (non-fatal):', err);
+      pm.setProjectData((prev: any) => {
+        const refs = [...(prev.references || [])];
+        for (const repaired of repairedRefs) {
+          const idx = refs.findIndex(
+            (r: any) => r.inlineMarker === repaired.inlineMarker && r.sectionKey === repaired.sectionKey
+          );
+          if (idx !== -1) {
+            refs[idx] = { ...refs[idx], ...repaired };
           }
         }
-        // ── /EO-148 ────────────────────────────────────────────────────
+        console.log(`[EO-148b] Repaired refs merged. Total refs: ${refs.length}`);
+        return { ...prev, references: refs };
+      });
+
+      const groundingFixed = repairedRefs.filter((r: any) => r.verificationMethod === 'google-search-grounding').length;
+      const scholarFixed = repairedRefs.filter((r: any) => r.verificationMethod === 'google-scholar-fallback').length;
+      console.log(`[EO-148b] Repair complete: ${groundingFixed} via grounding, ${scholarFixed} via Scholar`);
+
+    } catch (err) {
+      console.warn('[EO-148b] Repair failed (non-fatal):', err);
+    }
+  }
+}
+// ── /EO-148b ────────────────────────────────────────────────────
       }
 
       generation.setError(language === 'si'
