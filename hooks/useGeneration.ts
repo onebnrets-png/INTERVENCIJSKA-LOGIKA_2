@@ -1,6 +1,8 @@
 // hooks/useGeneration.ts
 // ═══════════════════════════════════════════════════════════════ 
 // AI content generation — sections, fields, summaries.
+// v7.69 — 2026-03-24 — EO-151: Fix progress modal lost after cancel+restart (finally block sectionKey guard)
+//         EO-152: Auto-repair empty/broken reference URLs after composite generation
 // v7.68 — 2026-03-24 — EO-149: Fix _originalMarker loss — save _savedOriginalMarker before [N]→[XX-N] conversion
 //         EO-150: Validation no longer rejects composite sections — saves with warning instead
 //         EO-150b: Pass _compRefsEnabled to ER composite generateSectionContent calls
@@ -1688,7 +1690,11 @@ export const useGeneration = ({
     isGeneratingRef.current = false;
     setIsLoading(false);
     // [EO-137b-FIX2] Close progress modal on cancel
-    setGenerationProgress(prev => prev ? { ...prev, visible: false } : null);
+    // EO-151: Mark the cancelled sectionKey so finally block knows not to close a NEW modal
+    setGenerationProgress(prev => {
+      if (!prev) return null;
+      return { ...prev, visible: false, _cancelledKey: prev.sectionKey };
+    });
     setError(
       language === 'si'
         ? 'Generiranje preklicano.'
@@ -5107,6 +5113,38 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
               _updatePhase('urlVerification', 'running'); // [EO-137b]
               _verifyUrlsAfterSave(newData.references, setProjectData, currentProjectId, language, storageService);
               setTimeout(() => _updatePhase('urlVerification', 'completed'), 500); // [EO-137b]
+              // EO-152: Auto-repair for activities refs with empty URLs
+              setTimeout(async () => {
+                try {
+                  const allRefs = Array.isArray(newData.references) ? newData.references : [];
+                  const emptyUrlRefs = allRefs.filter((r: any) =>
+                    r.sectionKey &&
+                    (r.sectionKey === 'projectManagement' || r.sectionKey === 'risks' ||
+                     r.sectionKey === 'partners' || r.sectionKey.startsWith('activities_wp')) &&
+                    (!r.url || r.url.trim().length === 0) &&
+                    r.title && r.title.trim().length > 0
+                  );
+                  if (emptyUrlRefs.length > 0) {
+                    console.log('[EO-152] Auto-repair: ' + emptyUrlRefs.length + ' Activities refs have empty URLs — starting repair...');
+                    const repaired = await repairBrokenReferenceUrls(emptyUrlRefs, language);
+                    if (repaired.length > 0) {
+                      setProjectData((prev: any) => {
+                        const refs = [...(prev.references || [])];
+                        for (const rep of repaired) {
+                          const idx = refs.findIndex((r: any) => r.id === rep.id);
+                          if (idx !== -1) refs[idx] = { ...refs[idx], ...rep };
+                        }
+                        return { ...prev, references: refs };
+                      });
+                      const grounding = repaired.filter((r: any) => r.verificationMethod === 'google-search-grounding').length;
+                      const scholar = repaired.filter((r: any) => r.verificationMethod === 'google-scholar-fallback').length;
+                      console.log('[EO-152] Auto-repair complete: ' + grounding + ' via grounding, ' + scholar + ' via Scholar');
+                    }
+                  }
+                } catch (repairErr) {
+                  console.warn('[EO-152] Auto-repair failed (non-fatal):', repairErr);
+                }
+              }, 3000);
             } else {
               _updatePhase('urlVerification', 'skipped'); // [EO-137b]
             }
@@ -5318,7 +5356,9 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
               const label = modeLabels[action]?.[language] || modeLabels['generate'][language];
               var sectionLabel = getPrettyName(s, language);
 
-              setIsLoading(`${label} ${sectionLabel} (${idx + 1}/${totalToProcess})...`);
+              // EO-151: Don't set loading string when progress modal is active — it can
+              // cause the old overlay to show if the modal gets closed by a race condition
+              // setIsLoading(`${label} ${sectionLabel} (${idx + 1}/${totalToProcess})...`);
               _updatePhase('step_' + s, 'running'); // [EO-137b]
 
               let success = false;
@@ -5567,6 +5607,38 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                           _updatePhase('urlVerification', 'running'); // [EO-137b]
                           _verifyUrlsAfterSave(renumData.references, setProjectData, currentProjectId, language, storageService);
                           setTimeout(() => _updatePhase('urlVerification', 'completed'), 500); // [EO-137b]
+                          // EO-152: Auto-repair references with empty or broken URLs after composite
+                          setTimeout(async () => {
+                            try {
+                              const allRefs = Array.isArray(renumData.references) ? renumData.references : [];
+                              const emptyUrlRefs = allRefs.filter((r: any) =>
+                                r.sectionKey && ['outputs','outcomes','impacts','kers'].includes(r.sectionKey) &&
+                                (!r.url || r.url.trim().length === 0) &&
+                                r.title && r.title.trim().length > 0
+                              );
+                              if (emptyUrlRefs.length > 0) {
+                                console.log('[EO-152] Auto-repair: ' + emptyUrlRefs.length + ' ER refs have empty URLs — starting repair...');
+                                const repaired = await repairBrokenReferenceUrls(emptyUrlRefs, language);
+                                if (repaired.length > 0) {
+                                  setProjectData((prev: any) => {
+                                    const refs = [...(prev.references || [])];
+                                    for (const rep of repaired) {
+                                      const idx = refs.findIndex((r: any) => r.id === rep.id);
+                                      if (idx !== -1) refs[idx] = { ...refs[idx], ...rep };
+                                    }
+                                    return { ...prev, references: refs };
+                                  });
+                                  const grounding = repaired.filter((r: any) => r.verificationMethod === 'google-search-grounding').length;
+                                  const scholar = repaired.filter((r: any) => r.verificationMethod === 'google-scholar-fallback').length;
+                                  console.log('[EO-152] Auto-repair complete: ' + grounding + ' via grounding, ' + scholar + ' via Scholar');
+                                }
+                              } else {
+                                console.log('[EO-152] No empty-URL refs found — skipping auto-repair');
+                              }
+                            } catch (repairErr) {
+                              console.warn('[EO-152] Auto-repair failed (non-fatal):', repairErr);
+                            }
+                          }, 3000); // Wait 3s for URL verification to finish first
                         } else {
                           _updatePhase('urlVerification', 'skipped'); // [EO-137b]
                         }
@@ -5697,12 +5769,18 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
           isGeneratingRef.current = false;
           abortControllerRef.current = null;
           // [EO-137b] Close progress modal and persist phase timings to localStorage
+          // EO-151: Only close modal if it still belongs to THIS composite
           setGenerationProgress(prev => {
-            if (prev) _savePhaseTimings(
-              isActivities ? 'composite_activities' : 'composite_expectedResults',
-              prev.phases
-            );
-            return prev ? { ...prev, visible: false } : null;
+            if (!prev) return null;
+            const myKey = isActivities ? 'activities' : 'expectedResults';
+            // If modal sectionKey changed (new composite started), don't close it
+            if (prev.sectionKey !== myKey) {
+              console.log('[EO-151] ' + myKey + ' finally: skipping close — different modal active (' + prev.sectionKey + ')');
+              _savePhaseTimings(isActivities ? 'composite_activities' : 'composite_expectedResults', prev.phases);
+              return prev;
+            }
+            _savePhaseTimings(isActivities ? 'composite_activities' : 'composite_expectedResults', prev.phases);
+            return { ...prev, visible: false };
           });
         }
       };
@@ -6160,4 +6238,4 @@ export async function repairBrokenReferenceUrls(
 
 // ── /EO-148 ──────────────────────────────────────────────────────────────────
 
-// END OF useGeneration.ts v7.68
+// END OF useGeneration.ts v7.69
