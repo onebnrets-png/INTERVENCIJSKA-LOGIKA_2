@@ -1,6 +1,10 @@
 // hooks/useGeneration.ts
 // ═══════════════════════════════════════════════════════════════ 
 // AI content generation — sections, fields, summaries.
+// v7.68 — 2026-03-24 — EO-149: Fix _originalMarker loss — save _savedOriginalMarker before [N]→[XX-N] conversion
+//         EO-150: Validation no longer rejects composite sections — saves with warning instead
+//         EO-150b: Pass _compRefsEnabled to ER composite generateSectionContent calls
+// v7.67 — 2026-03-24 — EO-148: Repair broken reference URLs via AI grounding + Scholar fallback
 // v7.66 — 2026-03-24 — EO-147e: overrideRefs parameter in injectReferencesToText
 // v7.65 — 2026-03-24 — EO-147d: Pre-clean refs in injectReferencesToText
 // v7.64 — 2026-03-23 — EO-147: injectReferencesToText helper
@@ -598,6 +602,15 @@ function _runFullReferencePipeline(
       var _aiRef = _rawAiRefs[_iri];
       // Ensure chapterPrefix is set
       if (!_aiRef.chapterPrefix) _aiRef.chapterPrefix = _chPrefix;
+      // EO-149: Save the ORIGINAL AI marker BEFORE any [N]→[XX-N] conversion
+      // This is needed by _convertAiRefsToReferences so _originalMarker reflects
+      // what AI actually wrote in the text (e.g. "[1]"), not the converted "[ER-1]".
+      // Step 7 uses _originalMarker to find-and-replace in the text.
+      if (!_aiRef._savedOriginalMarker) {
+        _aiRef._savedOriginalMarker = (_aiRef.inlineMarker && _aiRef.inlineMarker.trim())
+          ? _aiRef.inlineMarker.trim()
+          : '[' + (_iri + 1) + ']';
+      }
       // Infer missing marker
       if (!_aiRef.inlineMarker || !_aiRef.inlineMarker.trim()) {
         _aiRef.inlineMarker = '[' + _chPrefix + '-' + (_iri + 1) + ']';
@@ -1239,7 +1252,12 @@ function _convertAiRefsToReferences(aiRefs: any[], sectionKey: string, existingR
     }
     if (_isDupInSameSection || _isDupInResult) continue;
 
-    var _aiMarker = (ar.inlineMarker && ar.inlineMarker.trim()) ? ar.inlineMarker.trim() : '';
+    // EO-149: Use _savedOriginalMarker (pre-conversion value) for _originalMarker
+    // so Step 7 can find the AI's original [1],[2] markers in the text and replace
+    // them with the prefixed [ER-1],[ER-2] markers.
+    var _aiMarker = (ar._savedOriginalMarker && ar._savedOriginalMarker.trim())
+      ? ar._savedOriginalMarker.trim()
+      : (ar.inlineMarker && ar.inlineMarker.trim()) ? ar.inlineMarker.trim() : '';
     // EO-141: Use prefixed marker [XX-N]
     var marker = '[' + _cvPrefix + '-' + nextChapterNum + ']';
     result.push({
@@ -5318,7 +5336,7 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                   } else {
                     const genMode = action === 'generate' ? 'regenerate' : action;
                     generatedData = await generateSectionContent(
-                      s, projectData, language, genMode, null, signal
+                      s, projectData, language, genMode, null, signal, undefined, _compRefsEnabled
                     );
                   }
 
@@ -5330,7 +5348,8 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                     console.log('[EO-045 VALIDATION composite] ' + s + ': raw FATAL=' + _compValReport.fatalCount + ' → filtered FATAL=' + _compFiltered.fatalCount + ' HIGH=' + _compFiltered.highCount);
                     if (_compFiltered.fatalCount > 0) {
                       var _compRejectSummary = _formatValidationIssues(_compFiltered, 5, language);
-                      console.error('[EO-045 VALIDATION composite] ★ REJECTED — ' + s + ':\n' + _compRejectSummary);
+                      // EO-150: Do NOT reject — save with warning. User keeps the generated content.
+                      console.warn('[EO-150] VALIDATION: FATAL issues in "' + s + '" — SAVING with warning (not rejecting):\n' + _compRejectSummary);
                       setModalConfig({
                         isOpen: true,
                         title: language === 'si' ? '\uD83D\uDD27 Vsebina potrebuje dopolnitev' : '\uD83D\uDD27 Content Needs Attention',
@@ -5338,7 +5357,9 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                           ? 'AI-generirana vsebina za "' + getPrettyName(s, language) + '" potrebuje dopolnitve:\n\n'
                           : 'AI-generated content for "' + getPrettyName(s, language) + '" needs improvements:\n\n')
                           + _compRejectSummary
-                          + (language === 'si' ? '\n\nTa del bo preskocen.' : '\n\nThis section will be skipped.'),
+                          + (language === 'si'
+                            ? '\n\nVsebina je bila shranjena. Priporočamo ročno dopolnitev indikatorjev in opisov.'
+                            : '\n\nContent was saved. Manual improvement of indicators and descriptions recommended.'),
                         confirmText: language === 'si' ? 'V redu' : 'OK',
                         secondaryText: '',
                         cancelText: '',
@@ -5346,7 +5367,7 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                         onSecondary: null,
                         onCancel: closeModal,
                       });
-                      throw new Error('VALIDATION_REJECTED');
+                      // EO-150: NE throw VALIDATION_REJECTED — nadaljuj normalno s shranjevanjem
                     }
                     if (_compFiltered.highCount > 0) {
                       var _compWarnSummary = _formatValidationIssues(_compFiltered, 5, language);
@@ -6139,4 +6160,4 @@ export async function repairBrokenReferenceUrls(
 
 // ── /EO-148 ──────────────────────────────────────────────────────────────────
 
-// END OF useGeneration.ts v7.67
+// END OF useGeneration.ts v7.68
