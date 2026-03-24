@@ -1,0 +1,965 @@
+/* ═══════════════════════════════════════════════════════════════
+   EURO-OFFICE Design System — Global Stylesheet
+   v5.2 — 2026-03-01
+   
+   CHANGELOG:
+     v5.2: FIX Gantt/PERT/Organigram print rendering
+           - Removed global * { height: auto !important } from @media print
+           - Chart elements now preserve their calculated heights in print
+           - Added explicit print sizing for chart containers
+     v5.1: Added explicit @media print rules for PrintLayout visibility
+     v5.0: Initial Design System with light/dark mode
+   
+   ARCHITECTURE:
+     Light mode: Tailwind defaults + minimal overrides
+     Dark mode:  Material Design 3 compliant (m2.material.io/design/color/dark-theme)
+       - Dark grey (#121212) base — NOT pure black
+       - Elevation = lighter surfaces (5%→16% white overlay model)
+       - Desaturated accents (200 range)
+       - Text: 87% white (high), 60% (medium), 38% (disabled)
+       - Section-colored glow borders replace shadows
+       - Contrast ≥ 15.8:1 for body text
+   
+   SECTIONS:
+     1. Screen / Print media
+     2. Scrollbar
+     3. Animations & keyframes
+     4. Light mode CSS variables
+     5. Dark mode CSS variables
+     6. DARK MODE OVERRIDES (Material Design 3)
+     7. Step content cards
+     8. Print overrides
+   ═══════════════════════════════════════════════════════════════ */
+
+
+/* ═══════════════════════════════════════════════════════════════
+   1. SCREEN / PRINT MEDIA
+   ═══════════════════════════════════════════════════════════════ */
+
+@media screen {
+  .print-only { display: none !important; }
+}
+
+@media print {
+  .no-print,
+  .sidebar,
+  nav,
+  footer,
+  button,
+  .toolbar,
+  .loading-overlay { display: none !important; }
+
+  /* ★ v5.2: REMOVED global * { height: auto } — it destroyed Gantt/PERT charts.
+     Instead, target only text-content containers that need overflow visible. */
+  #print-layout-container section,
+  #print-layout-container .mb-8,
+  #print-layout-container .mb-6,
+  #print-layout-container .mb-4,
+  #print-layout-container p,
+  #print-layout-container table,
+  #print-layout-container ul,
+  #print-layout-container ol {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  body, html {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+  }
+
+  :root {
+    --bg-surface: #FFFFFF;
+    --bg-card: #FFFFFF;
+    --text-heading: #000000;
+    --text-body: #1a1a1a;
+    --border-light: #cccccc;
+  }
+   /* Show print layout container */
+  #print-layout-container {
+    display: block !important;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   2. SCROLLBAR
+   ═══════════════════════════════════════════════════════════════ */
+
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 3px;
+}
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   3. ANIMATIONS & KEYFRAMES
+   ═══════════════════════════════════════════════════════════════ */
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes cardAppear {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Utility animation classes */
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out both;
+}
+
+.animate-cardAppear {
+  animation: cardAppear 0.4s ease-out both;
+}
+
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+}
+
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   4. LIGHT MODE CSS VARIABLES
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg-surface: #F8FAFC;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #F1F5F9;
+  --text-heading: #0F172A;
+  --text-body: #334155;
+  --text-muted: #94A3B8;
+  --border-light: #E2E8F0;
+  --border-medium: #CBD5E1;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   5. DARK MODE CSS VARIABLES
+   ═══════════════════════════════════════════════════════════════ */
+
+:root.dark {
+  --bg-surface: #121212;
+  --bg-card: #1E1E1E;
+  --bg-sidebar: #1E1E1E;
+  --text-heading: rgba(255, 255, 255, 0.87);
+  --text-body: rgba(255, 255, 255, 0.60);
+  --text-muted: rgba(255, 255, 255, 0.38);
+  --border-light: #2C2C2C;
+  --border-medium: #3D3D3D;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   6. DARK MODE OVERRIDES
+   
+   Material Design 3 Dark Theme (m2.material.io/design/color/dark-theme):
+   ─ Use dark grey, NOT pure black
+   ─ Higher elevation = lighter surface (white overlay model)
+   ─ Desaturate accent colors (200 range)
+   ─ Text: high-emphasis 87%, medium 60%, disabled 38% white
+   ─ No shadows — use surface lightness for elevation
+   ─ Section-colored glow borders on cards
+   
+   Dark Navy palette (derived from sidebar #0F172A):
+     Level 0:  #0B1120  page bg
+     Level 1:  #0F172A  toolbar, sidebar
+     Level 2:  #162032  cards
+     Level 3:  #1C2940  nested cards, hover
+     Level 4:  #233350  elevated elements
+     Input:    #0A0E1A  deepest
+     Border:   #1E3050  subtle
+     Border+:  #2A4065  visible
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── 6.1 ROOT ─── */
+html.dark,
+html.dark body {
+  background-color: #0B1120 !important;
+  color: rgba(255, 255, 255, 0.87) !important;
+  color-scheme: dark;
+}
+
+/* ─── 6.2 MAIN CONTENT AREA ─── */
+html.dark .bg-slate-50,
+html.dark .bg-slate-50\/30,
+html.dark .bg-gray-50,
+html.dark .bg-slate-100,
+html.dark .bg-gray-100 {
+  background-color: #0B1120 !important;
+}
+
+/* ─── 6.3 CARDS (bg-white) — Level 2 ─── */
+html.dark .bg-white {
+  background-color: #162032 !important;
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+html.dark .bg-white .bg-white {
+  background-color: #1C2940 !important;
+}
+
+html.dark .bg-white .bg-white .bg-white {
+  background-color: #233350 !important;
+}
+
+/* ─── 6.4 SECTION GLOW BORDERS (--step-card-border from ProjectDisplay) ─── */
+html.dark .step-content .bg-white {
+  border: 1px solid color-mix(in srgb, var(--step-card-border, #1E3050) 40%, #1E3050) !important;
+  box-shadow: 0 0 15px -3px color-mix(in srgb, var(--step-card-border, transparent) 25%, transparent),
+              0 0 6px -2px color-mix(in srgb, var(--step-card-border, transparent) 15%, transparent) !important;
+}
+
+html.dark .step-content .bg-white:hover {
+  box-shadow: 0 0 25px -3px color-mix(in srgb, var(--step-card-border, transparent) 40%, transparent),
+              0 0 10px -2px color-mix(in srgb, var(--step-card-border, transparent) 25%, transparent) !important;
+  border-color: color-mix(in srgb, var(--step-card-border, #1E3050) 60%, #1E3050) !important;
+}
+
+html.dark .step-content .bg-white .bg-white {
+  border: 1px solid #1E3050 !important;
+  box-shadow: none !important;
+}
+
+/* ─── 6.5 INPUTS — deepest surface ─── */
+html.dark textarea,
+html.dark input[type="text"],
+html.dark input[type="number"],
+html.dark input[type="email"],
+html.dark input[type="password"],
+html.dark input[type="date"],
+html.dark select {
+  background-color: #0A0E1A !important;
+  color: rgba(255, 255, 255, 0.87) !important;
+  border-color: #1E3050 !important;
+}
+
+html.dark textarea:focus,
+html.dark input:focus,
+html.dark select:focus {
+  border-color: var(--step-card-border, #818CF8) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-card-border, #818CF8) 20%, transparent) !important;
+  outline: none !important;
+}
+
+html.dark textarea::placeholder,
+html.dark input::placeholder {
+  color: rgba(255, 255, 255, 0.30) !important;
+}
+
+html.dark select option {
+  background-color: #162032 !important;
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+/* ─── 6.6 TEXT — Material opacity model ─── */
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-gray-900,
+html.dark .text-gray-800 {
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+html.dark h1, html.dark h2, html.dark h3,
+html.dark h4, html.dark h5, html.dark h6 {
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-slate-600,
+html.dark .text-gray-700,
+html.dark .text-gray-600 {
+  color: rgba(255, 255, 255, 0.60) !important;
+}
+
+html.dark label {
+  color: rgba(255, 255, 255, 0.60) !important;
+}
+
+html.dark p {
+  color: rgba(255, 255, 255, 0.60) !important;
+}
+
+html.dark .text-slate-500,
+html.dark .text-slate-400,
+html.dark .text-gray-500,
+html.dark .text-gray-400 {
+  color: rgba(255, 255, 255, 0.38) !important;
+}
+
+/* ─── 6.7 BORDERS ─── */
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-gray-100,
+html.dark .border-gray-200 {
+  border-color: #1E3050 !important;
+}
+
+html.dark .border-slate-300,
+html.dark .border-gray-300 {
+  border-color: #2A4065 !important;
+}
+
+html.dark .border-b {
+  border-color: #1E3050 !important;
+}
+
+html.dark .border-t-2 {
+  border-color: #1E3050 !important;
+}
+
+html.dark .border-dashed {
+  border-color: #2A4065 !important;
+}
+
+/* ─── 6.8 PROJECTDISPLAY HEADER + APP TOOLBAR ─── */
+html.dark header,
+html.dark header.bg-white,
+html.dark .bg-white.sticky,
+html.dark .bg-white.border-b,
+html.dark main > header {
+  background-color: #0F172A !important;
+  border-color: #1E3050 !important;
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+/* ─── 6.9 ICONS ─── */
+html.dark button svg,
+html.dark a svg,
+html.dark label svg {
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+html.dark button:hover svg,
+html.dark a:hover svg {
+  color: #FFFFFF !important;
+}
+
+/* ─── 6.10 SHADOWS → NONE ─── */
+html.dark .shadow-sm,
+html.dark .shadow,
+html.dark .shadow-md,
+html.dark .shadow-lg,
+html.dark .shadow-xl {
+  box-shadow: none !important;
+}
+
+/* ─── 6.11 ACCENT COLORS — desaturated (200 range per Material) ─── */
+
+/* Sky #90CAF9 */
+html.dark .text-sky-600,
+html.dark .text-sky-700,
+html.dark .text-sky-800 {
+  color: #90CAF9 !important;
+}
+
+html.dark .bg-sky-100,
+html.dark .bg-sky-50 {
+  background-color: rgba(144, 202, 249, 0.08) !important;
+  color: #90CAF9 !important;
+}
+
+html.dark .border-sky-200,
+html.dark .border-sky-100 {
+  border-color: rgba(144, 202, 249, 0.20) !important;
+}
+
+/* Indigo #B39DDB */
+html.dark .text-indigo-600,
+html.dark .text-indigo-700 {
+  color: #B39DDB !important;
+}
+
+html.dark .bg-indigo-50,
+html.dark .bg-indigo-50\/50 {
+  background-color: rgba(179, 157, 219, 0.06) !important;
+}
+
+html.dark .border-indigo-100 {
+  border-color: rgba(179, 157, 219, 0.15) !important;
+}
+
+/* Red #EF9A9A */
+html.dark .text-red-600,
+html.dark .text-red-700 {
+  color: #EF9A9A !important;
+}
+
+html.dark .bg-red-50 {
+  background-color: rgba(239, 154, 154, 0.08) !important;
+  color: #EF9A9A !important;
+}
+
+html.dark .border-red-100,
+html.dark .border-red-200 {
+  border-color: rgba(239, 154, 154, 0.20) !important;
+}
+
+/* Green #A5D6A7 */
+html.dark .text-green-800,
+html.dark .text-green-700,
+html.dark .text-green-600 {
+  color: #A5D6A7 !important;
+}
+
+html.dark .bg-green-100,
+html.dark .bg-green-50 {
+  background-color: rgba(165, 214, 167, 0.08) !important;
+  color: #A5D6A7 !important;
+}
+
+html.dark .border-green-300,
+html.dark .border-green-200 {
+  border-color: rgba(165, 214, 167, 0.20) !important;
+}
+
+/* Amber #FFE082 */
+html.dark .text-yellow-800,
+html.dark .text-amber-600,
+html.dark .text-amber-500 {
+  color: #FFE082 !important;
+}
+
+html.dark .bg-yellow-100,
+html.dark .bg-amber-50,
+html.dark .bg-amber-50\/50 {
+  background-color: rgba(255, 224, 130, 0.08) !important;
+  color: #FFE082 !important;
+}
+
+html.dark .border-yellow-300,
+html.dark .border-amber-100,
+html.dark .border-amber-200 {
+  border-color: rgba(255, 224, 130, 0.20) !important;
+}
+
+/* ─── 6.12 TRAFFIC LIGHTS ─── */
+html.dark .bg-green-100.border-green-300.text-green-800 {
+  background-color: rgba(165, 214, 167, 0.12) !important;
+  border-color: rgba(165, 214, 167, 0.30) !important;
+  color: #A5D6A7 !important;
+}
+
+html.dark .bg-yellow-100.border-yellow-300.text-yellow-800 {
+  background-color: rgba(255, 224, 130, 0.12) !important;
+  border-color: rgba(255, 224, 130, 0.30) !important;
+  color: #FFE082 !important;
+}
+
+html.dark .bg-red-100.border-red-300.text-red-800 {
+  background-color: rgba(239, 154, 154, 0.12) !important;
+  border-color: rgba(239, 154, 154, 0.30) !important;
+  color: #EF9A9A !important;
+}
+
+/* ─── 6.13 BUTTONS ─── */
+html.dark button.bg-white.text-sky-600,
+html.dark button.bg-white.text-sky-700 {
+  background-color: #162032 !important;
+  color: #90CAF9 !important;
+  border-color: #1E3050 !important;
+}
+
+html.dark button.bg-white.text-sky-600:hover,
+html.dark button.bg-white.text-sky-700:hover {
+  background-color: #1C2940 !important;
+  border-color: #90CAF9 !important;
+}
+
+html.dark .bg-amber-500 {
+  background-color: rgba(255, 224, 130, 0.15) !important;
+  color: #FFE082 !important;
+}
+
+html.dark .bg-sky-600 {
+  background-color: rgba(144, 202, 249, 0.15) !important;
+  color: #90CAF9 !important;
+  border-color: rgba(144, 202, 249, 0.30) !important;
+}
+
+html.dark .bg-sky-600:hover,
+html.dark .bg-sky-700:hover {
+  background-color: rgba(144, 202, 249, 0.25) !important;
+}
+
+/* ─── 6.14 TASK AREAS ─── */
+html.dark .bg-slate-50.rounded-lg,
+html.dark .bg-slate-50\/50 {
+  background-color: #0F172A !important;
+}
+
+html.dark .border-l-4.border-sky-100 {
+  border-left-color: rgba(144, 202, 249, 0.25) !important;
+}
+
+html.dark .border-l-4.border-amber-100 {
+  border-left-color: rgba(255, 224, 130, 0.25) !important;
+}
+
+html.dark .border-l-4.border-indigo-100 {
+  border-left-color: rgba(179, 157, 219, 0.25) !important;
+}
+
+html.dark .bg-sky-100.text-sky-800 {
+  background-color: rgba(144, 202, 249, 0.12) !important;
+  color: #90CAF9 !important;
+}
+
+html.dark .bg-white.border.border-slate-200 {
+  background-color: #1C2940 !important;
+  border-color: #2A4065 !important;
+}
+
+/* ─── 6.15 DEPENDENCY SELECTOR ─── */
+html.dark .bg-slate-50.rounded-lg.border.border-slate-200 {
+  background-color: #0F172A !important;
+  border-color: #1E3050 !important;
+}
+
+/* ─── 6.16 GRADIENTS ─── */
+html.dark .bg-gradient-to-br,
+html.dark .bg-gradient-to-r {
+  background: #162032 !important;
+}
+
+/* ─── 6.17 ALERTS ─── */
+html.dark .bg-red-50.border-l-4.border-red-500 {
+  background-color: rgba(239, 154, 154, 0.08) !important;
+  border-left-color: #EF9A9A !important;
+  color: #EF9A9A !important;
+}
+
+html.dark .bg-sky-50.border.border-sky-100 {
+  background-color: rgba(144, 202, 249, 0.06) !important;
+  border-color: rgba(144, 202, 249, 0.15) !important;
+  color: #90CAF9 !important;
+}
+
+/* ─── 6.18 SELECTS ─── */
+html.dark select.bg-slate-50,
+html.dark .bg-slate-50.focus\:bg-white {
+  background-color: #0F172A !important;
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+html.dark .bg-slate-50.text-sky-700 {
+  background-color: #0F172A !important;
+  color: #90CAF9 !important;
+}
+
+/* ─── 6.19 LINKS ─── */
+html.dark a:not([class*="bg-"]) {
+  color: #90CAF9;
+}
+
+html.dark a:not([class*="bg-"]):hover {
+  color: #BBDEFB;
+}
+
+/* ─── 6.20 SCROLLBAR ─── */
+html.dark ::-webkit-scrollbar-track {
+  background: #0B1120;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #1E3050;
+  border-color: #0B1120;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #2A4065;
+}
+
+html.dark .sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+html.dark .sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.20);
+}
+
+/* ─── 6.21 CODE ─── */
+html.dark code,
+html.dark pre {
+  background-color: #0A0E1A !important;
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+/* ─── 6.22 FILTERS ─── */
+html.dark .filter {
+  filter: none !important;
+}
+
+html.dark .grayscale {
+  filter: grayscale(1) !important;
+}
+
+/* ─── 6.23 CHARTS ─── */
+html.dark .recharts-text,
+html.dark .recharts-cartesian-axis-tick-value {
+  fill: rgba(255, 255, 255, 0.60) !important;
+}
+
+html.dark .recharts-cartesian-grid line {
+  stroke: #1E3050 !important;
+}
+
+/* ─── 6.24 ADMIN PANEL edge cases ─── */
+html.dark .border-b[style*="border"] {
+  border-color: #1E3050 !important;
+}
+/* ─── 6.25 GANTT CHART ─── */
+
+/* Milestone diamonds: black → bright white */
+html.dark .step-content .chart-container-white .bg-black {
+  background-color: #E2E8F0 !important;
+}
+
+/* Task bars: keep indigo visible */
+html.dark .step-content .chart-container-white .bg-indigo-400 {
+  background-color: rgba(129, 140, 248, 0.70) !important;
+}
+
+html.dark .step-content .chart-container-white .bg-indigo-500 {
+  background-color: rgba(129, 140, 248, 0.85) !important;
+}
+
+/* WP summary bars */
+html.dark .step-content .chart-container-white .bg-slate-700 {
+  background-color: rgba(148, 163, 184, 0.50) !important;
+}
+
+/* WP label background */
+html.dark .step-content .chart-container-white .bg-white\/80 {
+  background-color: rgba(22, 32, 50, 0.85) !important;
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+/* Dependency arrows SVG */
+html.dark .step-content .chart-container-white svg polygon[fill="#64748b"] {
+  fill: #90CAF9 !important;
+}
+
+html.dark .step-content .chart-container-white svg path[stroke="#64748b"] {
+  stroke: rgba(144, 202, 249, 0.50) !important;
+}
+
+/* Header and grid lines */
+html.dark .step-content .chart-container-white .bg-slate-50,
+html.dark .step-content .chart-container-white .bg-slate-50\/50 {
+  background-color: #0F172A !important;
+}
+
+html.dark .step-content .chart-container-white .border-slate-100,
+html.dark .step-content .chart-container-white .border-slate-200 {
+  border-color: #1E3050 !important;
+}
+
+html.dark .step-content .chart-container-white .border-slate-300 {
+  border-color: #2A4065 !important;
+}
+
+/* Text labels in Gantt */
+html.dark .step-content .chart-container-white .text-slate-500,
+html.dark .step-content .chart-container-white .text-slate-600 {
+  color: rgba(255, 255, 255, 0.60) !important;
+}
+
+html.dark .step-content .chart-container-white .text-slate-700,
+html.dark .step-content .chart-container-white .text-slate-800 {
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   7. STEP CONTENT CARDS
+   Uses CSS custom properties set by ProjectDisplay:
+     --step-card-bg     (light tint of section color)
+     --step-card-border  (section accent color)
+   v5.3 — 2026-02-21
+     - chart-container-white: light = #FFF, dark = #162032
+     - Targets only direct .bg-white children (no * selector)
+     - !important scoped to html.dark to avoid overriding dark mode
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Light mode: step-tinted card backgrounds */
+.step-content .bg-white {
+  background-color: var(--step-card-bg, #FFFFFF);
+  border-color: var(--step-card-border, #E2E8F0);
+}
+
+/* ★ v5.3: Light mode — chart containers stay white */
+.step-content .chart-container-white {
+  --step-card-bg: #FFFFFF;
+  background-color: #FFFFFF;
+}
+
+.step-content .chart-container-white > .bg-white,
+.step-content .chart-container-white > div > .bg-white {
+  background-color: #FFFFFF;
+}
+
+/* ★ v5.3: Dark mode — chart containers use Level 2 dark surface */
+html.dark .step-content .chart-container-white {
+  --step-card-bg: #162032;
+  background-color: #162032 !important;
+}
+
+html.dark .step-content .chart-container-white > .bg-white,
+html.dark .step-content .chart-container-white > div > .bg-white {
+  background-color: #162032 !important;
+}
+
+/* Dark mode: all other overrides handled in 6.3 + 6.4 above */
+
+
+/* ═══════════════════════════════════════════════════════════════
+   8. PRINT — force light mode for printing
+   ═══════════════════════════════════════════════════════════════ */
+
+@media print {
+  html.dark,
+  html.dark body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+
+  html.dark .bg-white,
+  html.dark .bg-slate-50,
+  html.dark .bg-slate-100 {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border-color: #CCCCCC !important;
+  }
+
+  html.dark h1, html.dark h2, html.dark h3,
+  html.dark h4, html.dark h5, html.dark h6 {
+    color: #000000 !important;
+  }
+
+  html.dark p, html.dark span, html.dark div,
+  html.dark label, html.dark li, html.dark td {
+    color: #1a1a1a !important;
+  }
+
+  html.dark textarea,
+  html.dark input,
+  html.dark select {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    border-color: #CCCCCC !important;
+  }
+
+  /* Remove all glows and dark borders for print */
+  html.dark .step-content .bg-white {
+    box-shadow: none !important;
+    border: 1px solid #CCCCCC !important;
+  }
+
+  /* ★ v5.2: Charts in print — preserve calculated dimensions */
+  #print-layout-container [id*="gantt"],
+  #print-layout-container [id*="pert"],
+  #print-layout-container [id*="organigram"] {
+    width: 960px !important;
+    max-width: 960px !important;
+    overflow: visible !important;
+    page-break-inside: avoid;
+  }
+
+  /* ★ v5.2: Chart internals MUST keep their calculated heights
+     Do NOT apply height: auto to chart children */
+  #print-layout-container [id*="gantt"] div,
+  #print-layout-container [id*="pert"] div,
+  #print-layout-container [id*="organigram"] div {
+    /* Preserve overflow visible but DO NOT reset height */
+    overflow: visible !important;
+  }
+
+  /* ★ v5.2: SVG inside charts — preserve dimensions */
+  #print-layout-container [id*="gantt"] svg,
+  #print-layout-container [id*="pert"] svg,
+  #print-layout-container [id*="organigram"] svg {
+    max-width: 960px !important;
+    overflow: visible !important;
+  }
+
+  /* Ensure chart containers don't collapse */
+  #print-layout-container .chart-container-white {
+    overflow: visible !important;
+    width: 960px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ★ v5.1 / v5.2: PRINT STYLES — explicit @media print rules
+   Tailwind CDN print: variants are unreliable.
+   These native CSS rules ensure PrintLayout shows and UI hides.
+   ═══════════════════════════════════════════════════════════════ */
+
+@media print {
+  /* Hide the entire app UI */
+  .print\:hidden,
+  [class*="print:hidden"] {
+    display: none !important;
+  }
+
+  /* Show the print layout */
+  .print\:block,
+  [class*="print:block"] {
+    display: block !important;
+  }
+
+  /* Remove fixed/sticky positioning that breaks print — but NOT inside charts */
+  body > div > div[style*="position: fixed"],
+  [style*="position: sticky"],
+  header[style*="position: sticky"] {
+    position: static !important;
+  }
+
+  /* Allow overflow visible on main containers but preserve chart internals */
+  #print-layout-container {
+    overflow: visible !important;
+  }
+
+  #print-layout-container > div {
+    overflow: visible !important;
+  }
+
+  #print-layout-container p,
+  #print-layout-container span,
+  #print-layout-container td,
+  #print-layout-container th,
+  #print-layout-container li {
+    overflow: visible !important;
+    text-overflow: unset !important;
+    max-height: none !important;
+    -webkit-line-clamp: unset !important;
+  }
+
+  /* Reset background colors for clean print */
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Ensure full width — no sidebar margins */
+  main {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  /* Preserve pre-wrap for formatted content */
+  .whitespace-pre-wrap {
+    white-space: pre-wrap !important;
+  }
+
+  /* Remove shadows and decorations for cleaner print */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Page break control */
+  section {
+    page-break-inside: avoid;
+  }
+
+  h2, h3, h4 {
+    page-break-after: avoid;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+
+  /* Ensure tables print with borders */
+  table, th, td {
+    border-color: #d1d5db !important;
+  }
+
+  /* Hide loading overlays, modals, tooltips */
+  [style*="position: fixed"],
+  [style*="z-index: 60"],
+  [role="dialog"] {
+    display: none !important;
+  }
+}
+
+/* ─── EO-140: Responsive spacing via CSS custom properties ─── */
+/* These vars are set on .step-content by ProjectDisplay based on viewport tier.  */
+/* Normal (default): sectionGap=32px, cardPadding=20px                             */
+/* Compact:          sectionGap=20px, cardPadding=14px                             */
+/* Ultra-compact:    sectionGap=14px, cardPadding=10px                             */
+
+/* Section-level gap: replaces mt-8 (32px) */
+.step-content .mt-8 {
+  margin-top: var(--rc-section-gap, 32px) !important;
+}
+.step-content .mb-8 {
+  margin-bottom: var(--rc-section-gap, 32px) !important;
+}
+
+/* Card padding: replaces p-5 (20px) and p-6 (24px) */
+.step-content .p-5 {
+  padding: var(--rc-card-padding, 20px) !important;
+}
+.step-content .p-6 {
+  padding: var(--rc-card-padding, 20px) !important;
+}

@@ -1,0 +1,780 @@
+// components/Sidebar.tsx
+// ═══════════════════════════════════════════════════════════════
+// EURO-OFFICE Sidebar — Design System Edition
+// v3.14 — 2026-03-23 — EO-144: Fix readinessLevels progress — handle string level values
+// v3.13 — 2026-03-22 — EO-140: Responsive design. useResponsive hook. Scrollable
+//         container wraps Info+Nav+Footer so all 7 steps always visible.
+//         All sizes driven by rc.sidebar.* config from theme.ts.
+// v3.12 — 2026-03-18 — EO-126: Fix Activities 80% bug — arrayHasContent now checks item.name (partners use .name not .title)
+// v3.11 — 2026-03-17 — EO-101: FIX 100% Activities progress — include Finance (partnerAllocations) and Partners checks
+// v3.10 — 2026-03-16 — EO-088: FIX 80% progress: universal _fieldHasContent()
+// v3.10 — 2026-03-16 — EO-088: FIX 80% progress: universal _fieldHasContent()
+//         helper replaces string-only typeof checks for projectIdea fields
+// v3.9 — EO-061: Restructured sidebar layout — header is now logo+lang only,
+//         new SIDEBAR INFO SECTION handles collapsed/expanded states for
+//         welcome card, org card, dashboard button, project card, progress bar.
+//         Dashboard button and collapsed org avatar now work in both modes.
+// v3.8 — EO-053: Current Project box fully clickable with hover effect
+// v3.7 — EO-052: Extended typeof guards to ALL .trim() calls in
+//         getStepCompletionPercent() — problemAnalysis, activities,
+//         projectManagement blocks now also safe.
+// v3.6 — EO-052: Safe typeof guards for projectIdea, generalObjectives,
+//         specificObjectives blocks.
+// v3.6 — EO-052: Safe typeof guards for .trim() calls in
+//         getStepCompletionPercent() — prevents crash when AI returns
+//         non-string types (object, number) for projectIdea fields.
+//         Fixes: "o.trim is not a function" on language switch EN↔SI.
+// v3.5 — Previous production version
+// v3.4 — 2026-02-26 — COLLAPSE BUTTON MOVED TO TOP
+//   ★ v3.4: MOVE: Collapse/Expand button from footer to header
+//           — now matches DashboardPanel style (blue circle at top)
+//   ★ v3.3: User Guide link in sidebar footer
+//   ★ v3.2: NEW safeArray() utility — handles AI returning objects
+//           instead of arrays (e.g. { objectives: [...] } vs [...])
+//   ★ v3.2: arrayHasContent + getStepCompletionPercent use safeArray()
+//   ★ v3.1: FIX: hasActiveProject prop — all steps disabled when no project selected
+//   ★ v3.0: Dashboard Home integration
+//   ★ v2.0: Organization Switcher (Multi-Tenant)
+//   v1.8: Superadmin support
+//   v1.7: Dark-mode sub-step & step text colors
+//   v1.6: arrayHasContent helper fix
+//   v1.5: onCollapseChange prop
+// ═══════════════════════════════════════════════════════════════
+
+import React, { useState, useMemo } from 'react';
+import { colors, colors as lightColors, darkColors, stepColors, shadows, radii, spacing, animation, typography, zIndex, type StepColorKey } from '../design/theme.ts';
+import { ProgressRing } from '../design/components/ProgressRing.tsx';
+import { ICONS, getSteps, getSubSteps } from '../constants.tsx';
+import { TEXT } from '../locales.ts';
+import { isSubStepCompleted } from '../utils.ts';
+import { getThemeMode, toggleTheme, onThemeChange } from '../services/themeService.ts';
+import { storageService } from '../services/storageService.ts';
+import { changelogService } from '../services/changelogService.ts';
+import type { ProjectData } from '../types.ts';
+import { useResponsive } from '../hooks/useResponsive.ts'; // EO-140
+
+// ─── Step Icons (SVG for collapsed mode) ─────────────────────
+
+const STEP_ICONS: Record<string, React.FC<React.SVGProps<SVGSVGElement>>> = {
+  problemAnalysis: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+    </svg>
+  ),
+  projectIdea: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+    </svg>
+  ),
+  generalObjectives: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0 2.77-.693a9 9 0 0 1 6.208.682l.108.054a9 9 0 0 0 6.086.71l3.114-.732a48.524 48.524 0 0 1-.005-10.499l-3.11.732a9 9 0 0 1-6.085-.711l-.108-.054a9 9 0 0 0-6.208-.682L3 4.5M3 15V4.5" />
+    </svg>
+  ),
+  specificObjectives: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15a2.25 2.25 0 0 1 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" />
+    </svg>
+  ),
+  activities: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+    </svg>
+  ),
+  expectedResults: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.996.178-1.768.563-2.204 1.074m14.204-1.074c.996.178 1.768.563 2.204 1.074M12 2.25c2.209 0 4.335.2 6.25.566M12 2.25c-2.209 0-4.335.2-6.25.566M12 2.25V4.5m0-2.25L9.75 4.5M12 4.5l2.25-2.25M12 4.5v3" />
+    </svg>
+  ),
+  references: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+    </svg>
+  ),
+};
+
+// ─── Step completion helpers ─────────────────────────────────
+
+const STEP_KEYS: StepColorKey[] = ['problemAnalysis', 'projectIdea', 'generalObjectives', 'specificObjectives', 'activities', 'expectedResults', 'references'];
+
+// ★ v3.2: Safe array extractor — AI sometimes returns { objectives: [...] } instead of [...]
+function safeArray(v: any): any[] {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === 'object') {
+    for (const k of Object.keys(v)) {
+      if (Array.isArray(v[k])) return v[k];
+    }
+  }
+  return [];
+}
+
+// ★ v3.2: Accepts any type safely — never crashes
+function arrayHasContent(arr: any): boolean {
+  const safe = safeArray(arr);
+  if (safe.length === 0) return false;
+  return safe.some((item: any) => {
+    if (typeof item === 'string') return item.trim().length > 0;
+    if (typeof item !== 'object' || item === null) return false;
+    const hasTitle = item.title && typeof item.title === 'string' && item.title.trim().length > 0;
+    const hasName = item.name && typeof item.name === 'string' && item.name.trim().length > 0; // EO-126: partners use .name not .title
+    const hasDesc = item.description && typeof item.description === 'string' && item.description.trim().length > 0;
+    const hasMitigation = item.mitigation && typeof item.mitigation === 'string' && item.mitigation.trim().length > 0;
+    return hasTitle || hasName || hasDesc || hasMitigation;
+  });
+}
+// ☆ Field content check — handles string, object, number from AI responses
+function _fieldHasContent(val: any): boolean {
+  if (val === null || val === undefined) return false;
+  if (typeof val === 'string') return val.trim().length > 0;
+  if (typeof val === 'number') return true;
+  if (typeof val === 'object') {
+    if (Array.isArray(val)) return val.length > 0;
+    return Object.keys(val).length > 0 && JSON.stringify(val).length > 10;
+  }
+  return false;
+}
+// ★ v3.2: All .filter/.some calls use safeArray()
+function getStepCompletionPercent(projectData: ProjectData, stepKey: string): number {
+  try {
+    if (stepKey === 'problemAnalysis') {
+      let filled = 0; const total = 3;
+      const pa = projectData.problemAnalysis;
+      if (typeof pa?.coreProblem?.title === 'string' && pa.coreProblem.title.trim()) filled++;
+      if (arrayHasContent(pa?.causes)) filled++;
+      if (arrayHasContent(pa?.consequences)) filled++;
+      return Math.round((filled / total) * 100);
+    }
+    if (stepKey === 'projectIdea') {
+      let filled = 0; const total = 5;
+      const pi = projectData.projectIdea;
+      if (_fieldHasContent(pi?.mainAim)) filled++;
+      if (_fieldHasContent(pi?.stateOfTheArt)) filled++;
+      if (_fieldHasContent(pi?.proposedSolution)) filled++;
+      if (pi?.readinessLevels && Object.values(pi.readinessLevels).some((rl: any) => {
+        if (!rl) return false;
+        if (typeof rl.level === 'number' && rl.level > 0) return true;
+        if (typeof rl.level === 'string' && rl.level.trim().length > 0) return true;
+        if (rl.justification && typeof rl.justification === 'string' && rl.justification.trim().length > 0) return true;
+        return false;
+      })) filled++;
+      if (arrayHasContent(pi?.policies)) filled++;
+      return Math.round((filled / total) * 100);
+    }
+    if (stepKey === 'generalObjectives') {
+      const objs = safeArray(projectData.generalObjectives);
+      if (!arrayHasContent(objs)) return 0;
+      const withContent = objs.filter((o: any) => (typeof o.title === 'string' && o.title.trim()) && (typeof o.description === 'string' && o.description.trim())).length;
+      const minRequired = 3;
+      if (withContent >= minRequired) return 100;
+      return Math.round((withContent / minRequired) * 100);
+    }
+    if (stepKey === 'specificObjectives') {
+      const objs = safeArray(projectData.specificObjectives);
+      if (!arrayHasContent(objs)) return 0;
+      const withContent = objs.filter((o: any) => (typeof o.title === 'string' && o.title.trim()) && (typeof o.description === 'string' && o.description.trim()) && (typeof o.indicator === 'string' && o.indicator.trim())).length;
+      return Math.round((Math.min(withContent, 5) / 5) * 100);
+    }
+        if (stepKey === 'activities') {
+      let filled = 0; const total = 5; // ★ EO-101: was 3 — now includes Partners + Finance
+      const acts = safeArray(projectData.activities);
+      // 1. Work Packages / Tasks
+      if (acts.length > 0 && acts.some((wp: any) =>
+        (typeof wp.title === 'string' && wp.title.trim()) ||
+        (safeArray(wp.tasks).some((t: any) => typeof t.title === 'string' && t.title.trim()))
+      )) filled++;
+      // 2. Project Management
+      if (typeof projectData.projectManagement?.description === 'string' && projectData.projectManagement.description.trim()) filled++;
+      // 3. Partners (Consortium)
+      if (arrayHasContent(projectData.partners)) filled++;
+      // 4. Finance (Partner Allocations — budget data inside activities.tasks)
+      var _hasAllocations = false;
+      var _actsForAlloc = safeArray(projectData.activities);
+      for (var _ai = 0; _ai < _actsForAlloc.length && !_hasAllocations; _ai++) {
+        var _wpTasks = safeArray(_actsForAlloc[_ai]?.tasks);
+        for (var _ti = 0; _ti < _wpTasks.length && !_hasAllocations; _ti++) {
+          var _taskAllocs = safeArray(_wpTasks[_ti]?.partnerAllocations);
+          if (_taskAllocs.length > 0 && _taskAllocs.some(function(a: any) { return a && (a.hours > 0 || a.totalDirectCost > 0 || a.pm > 0); })) {
+            _hasAllocations = true;
+          }
+        }
+      }
+      if (_hasAllocations) filled++;
+
+      // 5. Risks
+      if (arrayHasContent(projectData.risks)) filled++;
+      return Math.round((filled / total) * 100);
+    }
+    if (stepKey === 'expectedResults') {
+      let filled = 0; const total = 4;
+      if (arrayHasContent(projectData.outputs)) filled++;
+      if (arrayHasContent(projectData.outcomes)) filled++;
+      if (arrayHasContent(projectData.impacts)) filled++;
+      if (arrayHasContent(projectData.kers)) filled++;
+      return Math.round((filled / total) * 100);
+    }
+    if (stepKey === 'references') {
+      const refs = Array.isArray((projectData as any).references) ? (projectData as any).references : [];
+      return refs.length > 0 ? 100 : 0;
+    }
+    return 0;
+  } catch (e) {
+    // ★ v3.2: Never crash on data inspection
+    console.warn('[Sidebar] Error checking ' + stepKey + ':', e);
+    return 0;
+  }
+}
+
+function getOverallCompletion(projectData: ProjectData): number {
+  const percentages = STEP_KEYS.map((key) => getStepCompletionPercent(projectData, key));
+  return Math.round(percentages.reduce((sum, v) => sum + v, 0) / percentages.length);
+}
+
+// ─── Dark-aware color helpers ────────────────────────────────
+
+function getStepTextColor(stepColor: typeof stepColors[StepColorKey], isDark: boolean): string {
+  return isDark ? stepColor.main : stepColor.text;
+}
+
+function getStepActiveBg(stepColor: typeof stepColors[StepColorKey], isDark: boolean): string {
+  return isDark ? (stepColor.main + '18') : stepColor.light;
+}
+
+function getStepActiveBorder(stepColor: typeof stepColors[StepColorKey], isDark: boolean): string {
+  return isDark ? (stepColor.main + '40') : stepColor.border;
+}
+
+// ─── Props ───────────────────────────────────────────────────
+
+interface SidebarProps {
+  language: 'en' | 'si';
+  projectData: ProjectData;
+  currentStepId: number | null;
+  setCurrentStepId: (id: number) => void;
+  completedStepsStatus: boolean[];
+  displayTitle: string;
+  currentUser: string;
+  appLogo: string;
+  isAdmin: boolean;
+  activeOrg: { id: string; name: string; slug: string } | null;
+  userOrgs: { id: string; name: string; slug: string }[];
+  onSwitchOrg: (orgId: string) => void;
+  isSwitchingOrg: boolean;
+  isSidebarOpen: boolean;
+  onCloseSidebar: () => void;
+  onBackToWelcome: () => void;
+  onOpenProjectList: () => void;
+  onOpenAdminPanel: (initialTab?: string) => void;
+  onLogout: () => void;
+  onLanguageSwitch: (lang: 'en' | 'si') => void;
+  onSubStepClick: (subStepId: string) => void;
+  isLoading: boolean;
+  onCollapseChange?: (collapsed: boolean) => void;
+  activeView: 'dashboard' | 'project';
+  onOpenDashboard: () => void;
+  hasActiveProject?: boolean;
+}
+
+// ─── Component ───────────────────────────────────────────────
+
+const Sidebar: React.FC<SidebarProps> = ({
+  language, projectData, currentStepId, setCurrentStepId, completedStepsStatus,
+  displayTitle, currentUser, appLogo, isAdmin,
+  activeOrg, userOrgs, onSwitchOrg, isSwitchingOrg,
+  isSidebarOpen, onCloseSidebar,
+  onBackToWelcome, onOpenProjectList, onOpenAdminPanel, onLogout, onLanguageSwitch,
+  onSubStepClick, isLoading, onCollapseChange,
+  activeView, onOpenDashboard,
+  hasActiveProject = true,
+}) => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isDark, setIsDark] = useState(() => getThemeMode() === 'dark');
+  const [appVersion, setAppVersion] = useState('');
+
+  React.useEffect(function() {
+    changelogService.getCurrentVersion().then(function(v) { setAppVersion(v); });
+  }, []);
+
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024);
+  React.useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  React.useEffect(() => {
+    return onThemeChange((mode) => setIsDark(mode === 'dark'));
+  }, []);
+
+  const tc = isDark ? darkColors : colors;
+  const t = TEXT[language] || TEXT['en'];
+  const STEPS = getSteps(language);
+  const SUB_STEPS = getSubSteps(language);
+  const overallCompletion = useMemo(() => getOverallCompletion(projectData), [projectData]);
+
+  const isSuperAdmin = storageService.isSuperAdmin();
+
+  // EO-140: Responsive config
+  const { config: rc, isCompact, isUltraCompact } = useResponsive();
+
+  const collapsedWidth = 64;
+  const expandedWidth = 280;
+  const sidebarWidth = isCollapsed ? collapsedWidth : expandedWidth;
+
+  const sidebarStyle: React.CSSProperties = {
+    position: 'fixed' as const,
+    inset: '0 auto 0 0',
+    zIndex: zIndex.sidebar,
+    width: sidebarWidth,
+    background: isDark
+      ? 'linear-gradient(180deg, ' + darkColors.surface.card + ' 0%, ' + darkColors.surface.sidebar + ' 100%)'
+      : 'linear-gradient(180deg, ' + tc.surface.card + ' 0%, ' + tc.surface.sidebar + ' 100%)',
+    borderRight: '1px solid ' + tc.border.light,
+    display: 'flex',
+    flexDirection: 'column',
+    transition: 'width ' + animation.duration.normal + ' ' + animation.easing.default + ', transform ' + animation.duration.normal + ' ' + animation.easing.default,
+    overflow: 'hidden',
+    boxShadow: shadows.lg,
+    fontFamily: typography.fontFamily.sans,
+    color: tc.text.body,
+  };
+
+  const mobileTransform = isDesktop || isSidebarOpen ? 'translateX(0)' : 'translateX(-100%)';
+  const responsiveStyle: React.CSSProperties = { ...sidebarStyle, transform: mobileTransform };
+
+  const footerIcon = isSuperAdmin ? '\u{1F451}' : isAdmin ? '\u{1F6E1}\uFE0F' : '\u2699\uFE0F';
+  const footerLabel = isSuperAdmin
+    ? (language === 'si' ? 'Super Admin / Nastavitve' : 'Super Admin / Settings')
+    : isAdmin
+      ? (language === 'si' ? 'Admin / Nastavitve' : 'Admin / Settings')
+      : (language === 'si' ? 'Nastavitve' : 'Settings');
+
+  const isDashboardActive = activeView === 'dashboard';
+
+  return (
+    <>
+      {isSidebarOpen && (
+        <div onClick={onCloseSidebar} style={{ position: 'fixed', inset: 0, background: tc.surface.overlay, zIndex: zIndex.sidebar - 1 }} className="lg:hidden" />
+      )}
+
+      <aside style={responsiveStyle}>
+        {/* ═══ HEADER — fixed, never scrolls ═══ */}
+        <div style={{ padding: isCollapsed ? (spacing.md + ' ' + spacing.sm) : rc.sidebar.headerPadding, borderBottom: '1px solid ' + tc.border.light, flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: isCollapsed ? 'center' : 'space-between', alignItems: 'center', marginBottom: isCollapsed ? spacing.sm : spacing.lg }}>
+            <button onClick={onOpenDashboard} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }} title={language === 'si' ? 'Nadzorna plosca' : 'Dashboard'}>
+              <img src={appLogo} alt="Logo" style={{ height: isCollapsed ? 28 : rc.sidebar.logoHeight, width: 'auto', objectFit: 'contain', transition: 'height ' + animation.duration.normal }} />
+            </button>
+            {!isCollapsed && (
+              <div style={{ display: 'flex', background: tc.surface.sidebar, borderRadius: radii.md, padding: '2px', border: '1px solid ' + tc.border.light }}>
+                {(['si', 'en'] as const).map((lang) => (
+                  <button key={lang} onClick={() => onLanguageSwitch(lang)} disabled={isLoading} style={{
+                    padding: '2px 8px', fontSize: typography.fontSize.xs, fontWeight: language === lang ? typography.fontWeight.bold : typography.fontWeight.medium,
+                    borderRadius: radii.sm, border: 'none', cursor: isLoading ? 'not-allowed' : 'pointer',
+                    background: language === lang ? tc.surface.card : 'transparent',
+                    color: language === lang ? (isDark ? '#A5B4FC' : tc.primary[600]) : tc.text.muted,
+                    boxShadow: language === lang ? shadows.xs : 'none', transition: 'all ' + animation.duration.fast, opacity: isLoading ? 0.5 : 1,
+                  }}>{lang.toUpperCase()}</button>
+                ))}
+              </div>
+            )}
+          </div>
+
+        </div>
+
+        {/* ═══ SCROLLABLE CONTAINER — Info + Nav + Footer scroll together ═══ */}
+        {/* EO-140: Header stays fixed; everything below scrolls when content exceeds viewport */}
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }} className="custom-scrollbar">
+
+        {/* ═══ SIDEBAR INFO SECTION ═══ */}
+        <div style={{ padding: isCollapsed ? (spacing.sm + ' ' + spacing.sm) : rc.sidebar.infoPadding, flexShrink: 0 }}>
+
+          {/* ── 1. WELCOME + IME + ORGANIZACIJA (združena kartica) ── */}
+          {!isCollapsed && (
+            <div style={{
+              background: tc.surface.card, borderRadius: radii.lg,
+              padding: rc.sidebar.cardPadding, border: '1px solid ' + tc.border.light,
+              marginBottom: isUltraCompact ? spacing.xs : isCompact ? spacing.sm : spacing.md,
+            }}>
+              {/* Welcome + Ime */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: activeOrg ? spacing.sm : 0 }}>
+                <div>
+                  <div style={{ fontSize: rc.sidebar.fontSize.label, color: tc.text.muted, marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: typography.fontWeight.bold }}>
+                    {t.auth.welcome}
+                  </div>
+                  <div style={{ fontSize: rc.sidebar.fontSize.body, color: tc.text.heading, fontWeight: typography.fontWeight.semibold, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {currentUser}
+                  </div>
+                </div>
+                <button onClick={() => onOpenAdminPanel('profile')} style={{ border: 'none', background: 'none', color: tc.primary[500], cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 }} title={t.auth.settings}>
+                  <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                </button>
+              </div>
+
+              {/* Divider + Organizacija */}
+              {activeOrg && (
+                <>
+                  <div style={{ height: 1, background: tc.border.light, margin: '0 0 ' + spacing.sm + ' 0' }} />
+                  <div style={{ fontSize: rc.sidebar.fontSize.label, color: tc.text.muted, marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: typography.fontWeight.bold }}>
+                    {language === 'si' ? 'Organizacija' : 'Organization'}
+                  </div>
+                  {userOrgs.length <= 1 ? (
+                    <div style={{ fontSize: rc.sidebar.fontSize.body, color: tc.text.heading, fontWeight: typography.fontWeight.medium, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {activeOrg.name}
+                    </div>
+                  ) : (
+                    <select value={activeOrg.id} onChange={(e) => onSwitchOrg(e.target.value)} disabled={isSwitchingOrg} style={{
+                      width: '100%', padding: spacing.xs + ' ' + spacing.sm, borderRadius: radii.md,
+                      border: '1px solid ' + tc.border.light, background: tc.surface.primary,
+                      color: tc.text.heading, fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.medium,
+                      cursor: isSwitchingOrg ? 'wait' : 'pointer', outline: 'none', opacity: isSwitchingOrg ? 0.6 : 1,
+                    }}>
+                      {userOrgs.map((org) => (<option key={org.id} value={org.id}>{org.name}</option>))}
+                    </select>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Collapsed: Org avatar ── */}
+          {isCollapsed && activeOrg && (
+            <div title={activeOrg.name} style={{ textAlign: 'center', marginBottom: spacing.sm }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: radii.full,
+                background: isDark ? (tc.primary[500] + '30') : tc.primary[50],
+                color: isDark ? tc.primary[300] : tc.primary[700],
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: typography.fontSize.xs, fontWeight: typography.fontWeight.bold, margin: '0 auto',
+              }}>
+                {activeOrg.name.charAt(0).toUpperCase()}
+              </div>
+            </div>
+          )}
+
+          {/* ── 3. DASHBOARD ── */}
+          <button
+            onClick={onOpenDashboard}
+            style={{
+              width: '100%', textAlign: 'left',
+              padding: isCollapsed ? (spacing.sm + ' 0') : rc.sidebar.stepPadding,
+              borderRadius: radii.lg,
+              border: isDashboardActive ? ('1.5px solid ' + (isDark ? tc.primary[500] + '40' : tc.primary[200])) : '1.5px solid transparent',
+              background: isDashboardActive ? (isDark ? (tc.primary[500] + '18') : tc.primary[50]) : 'transparent',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center',
+              gap: isCollapsed ? '0' : spacing.md,
+              justifyContent: isCollapsed ? 'center' : 'flex-start',
+              transition: 'all ' + animation.duration.fast + ' ' + animation.easing.default,
+              fontFamily: 'inherit',
+              marginBottom: isUltraCompact ? spacing.xs : isCompact ? spacing.sm : spacing.md,
+            }}
+            title={isCollapsed ? (language === 'si' ? 'Nadzorna plošča' : 'Dashboard') : undefined}
+          >
+            <div style={{
+              width: isCollapsed ? (rc.sidebar.dashboardIconSize - 8) : rc.sidebar.dashboardIconSize,
+              height: isCollapsed ? (rc.sidebar.dashboardIconSize - 8) : rc.sidebar.dashboardIconSize,
+              borderRadius: radii.lg,
+              background: isDashboardActive ? (isDark ? (tc.primary[500] + '25') : tc.primary[100]) : (isDark ? 'rgba(99,102,241,0.08)' : tc.primary[50]),
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              <svg style={{ width: isCollapsed ? 16 : rc.sidebar.dashboardIconSize - 14, height: isCollapsed ? 16 : rc.sidebar.dashboardIconSize - 14, color: isDashboardActive ? tc.primary[500] : tc.text.muted }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+              </svg>
+            </div>
+            {!isCollapsed && (
+              <span style={{
+                flex: 1, fontSize: rc.sidebar.fontSize.step,
+                fontWeight: isDashboardActive ? typography.fontWeight.semibold : typography.fontWeight.medium,
+                color: isDashboardActive ? (isDark ? tc.primary[300] : tc.primary[700]) : tc.text.body,
+                transition: 'color ' + animation.duration.fast,
+              }}>
+                {language === 'si' ? 'Nadzorna plošča' : 'Dashboard'}
+              </span>
+            )}
+          </button>
+
+          {/* ── 4. CURRENT PROJECT ── */}
+          {!isCollapsed && (
+            <div onClick={onOpenProjectList} style={{ background: tc.surface.card, borderRadius: radii.lg, padding: rc.sidebar.cardPadding, border: '1px solid ' + tc.border.light, marginBottom: isUltraCompact ? spacing.xs : isCompact ? spacing.sm : spacing.md, cursor: 'pointer', transition: 'all ' + animation.duration.fast + ' ' + animation.easing.default }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = tc.primary[300]; e.currentTarget.style.background = isDark ? tc.primary[900] + '20' : tc.primary[50]; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = tc.border.light; e.currentTarget.style.background = tc.surface.card; }}>
+              <p style={{ fontSize: rc.sidebar.fontSize.label, textTransform: 'uppercase', fontWeight: typography.fontWeight.bold, color: tc.text.muted, marginBottom: '4px', letterSpacing: '0.05em', margin: '0 0 4px 0' }}>{t.projects.currentProject}</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h3 style={{ fontSize: rc.sidebar.fontSize.body, fontWeight: typography.fontWeight.semibold, color: tc.text.heading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: spacing.sm, margin: 0 }} title={displayTitle}>{displayTitle}</h3>
+                <div style={{ color: tc.primary[500], display: 'flex', alignItems: 'center', flexShrink: 0 }} title={t.projects.switchProject}>
+                  <svg style={{ width: 16, height: 16 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── 5. OVERALL PROGRESS ── */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isCollapsed ? 'center' : 'flex-start', gap: spacing.sm, marginBottom: isUltraCompact ? spacing.xs : spacing.sm }}>
+            <ProgressRing value={overallCompletion} size={isCollapsed ? (rc.ringSize.overall + 4) : rc.ringSize.overall} strokeWidth={isCompact ? 3 : 4} showLabel={true} labelSize={isCollapsed ? '0.6rem' : '0.55rem'} />
+            {!isCollapsed && (
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: rc.sidebar.fontSize.body, color: tc.text.muted, margin: 0 }}>{language === 'si' ? 'Skupni napredek' : 'Overall Progress'}</p>
+                <div style={{ height: rc.sidebar.progressBarHeight, background: tc.border.light, borderRadius: radii.full, marginTop: 4, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: overallCompletion + '%', background: tc.primary.gradient, borderRadius: radii.full, transition: 'width ' + animation.duration.slower + ' ' + animation.easing.default }} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ═══ NAVIGATION ═══ */}
+        <nav style={{ padding: isCollapsed ? (spacing.sm + ' ' + spacing.xs) : (rc.sidebar.stepPadding.split(' ')[0] + ' ' + (rc.sidebar.stepPadding.split(' ')[1] || rc.sidebar.stepPadding.split(' ')[0])) }} className="custom-scrollbar">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: isCollapsed ? spacing.sm : rc.sidebar.stepGap }}>
+
+            {!isCollapsed && !isUltraCompact && (
+              <p style={{
+                fontSize: rc.sidebar.fontSize.label, textTransform: 'uppercase', fontWeight: typography.fontWeight.bold,
+                color: tc.text.muted, letterSpacing: '0.08em',
+                padding: '0 ' + spacing.lg, margin: '0 0 ' + spacing.xs + ' 0',
+              }}>
+                {language === 'si' ? 'Koraki projekta' : 'Project Steps'}
+              </p>
+            )}
+
+            {STEPS.map((step: any, idx: number) => {
+              const stepKey = step.key as StepColorKey;
+              const stepColor = stepColors[stepKey];
+              const isActive = activeView === 'project' && currentStepId === step.id;
+              const isCompleted = completedStepsStatus[idx];
+              const isClickable = hasActiveProject && (step.id === 1 || completedStepsStatus[0]);
+              const completionPct = getStepCompletionPercent(projectData, step.key);
+              const StepIcon = STEP_ICONS[step.key];
+
+              return (
+                <div key={step.id}>
+                  <button
+                    onClick={() => isClickable && setCurrentStepId(step.id)}
+                    disabled={!isClickable}
+                    style={{
+                      width: '100%', textAlign: 'left',
+                      padding: isCollapsed ? (spacing.sm + ' 0') : rc.sidebar.stepPadding,
+                      borderRadius: radii.lg,
+                      border: isActive ? ('1.5px solid ' + getStepActiveBorder(stepColor, isDark)) : '1.5px solid transparent',
+                      background: isActive ? getStepActiveBg(stepColor, isDark) : 'transparent',
+                      cursor: isClickable ? 'pointer' : 'not-allowed',
+                      opacity: isClickable ? 1 : 0.4,
+                      display: 'flex', alignItems: 'center',
+                      gap: isCollapsed ? '0' : spacing.md,
+                      justifyContent: isCollapsed ? 'center' : 'flex-start',
+                      transition: 'all ' + animation.duration.fast + ' ' + animation.easing.default,
+                      fontFamily: 'inherit',
+                    }}
+                    title={isCollapsed ? step.title : undefined}
+                  >
+                    {isCollapsed ? (
+                      <div style={{ position: 'relative' }}>
+                        <ProgressRing value={completionPct} size={rc.ringSize.sidebarCollapsed} strokeWidth={3} customColor={stepColor.main} showLabel={false} />
+                        {StepIcon && (
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <StepIcon style={{ width: isCompact ? 14 : 16, height: isCompact ? 14 : 16, color: isActive ? stepColor.main : tc.text.muted }} />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <ProgressRing value={completionPct} size={rc.ringSize.sidebar} strokeWidth={3} customColor={stepColor.main} showLabel={true} labelSize="0.5rem" />
+                    )}
+                    {!isCollapsed && (
+                      <span style={{
+                        flex: 1, fontSize: rc.sidebar.fontSize.step,
+                        fontWeight: isActive ? typography.fontWeight.semibold : typography.fontWeight.medium,
+                        color: isActive ? getStepTextColor(stepColor, isDark) : tc.text.body,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        transition: 'color ' + animation.duration.fast,
+                      }}>
+                        {step.title}
+                      </span>
+                    )}
+                    {!isCollapsed && isCompleted && (
+                      <ICONS.CHECK style={{ width: 18, height: 18, color: stepColor.main, flexShrink: 0 }} />
+                    )}
+                  </button>
+
+                  {!isCollapsed && isActive && SUB_STEPS[step.key as keyof typeof SUB_STEPS] && (SUB_STEPS[step.key as keyof typeof SUB_STEPS] as any[]).length > 0 && (
+                    <div style={{
+                      paddingLeft: spacing['2xl'], marginTop: '2px', marginBottom: spacing.sm,
+                      borderLeft: '2px solid ' + getStepActiveBorder(stepColor, isDark),
+                      marginLeft: spacing.xl,
+                    }}>
+                      {(SUB_STEPS[step.key as keyof typeof SUB_STEPS] as any[]).map((subStep: any) => {
+                        const subCompleted = isSubStepCompleted(projectData, step.key, subStep.id);
+                        return (
+                          <button
+                            key={subStep.id}
+                            onClick={() => onSubStepClick(subStep.id)}
+                            style={{
+                              width: '100%', textAlign: 'left',
+                              padding: spacing.xs + ' ' + spacing.md,
+                              borderRadius: radii.md, border: 'none', background: 'transparent',
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: spacing.sm,
+                              fontSize: rc.sidebar.fontSize.footer,
+                              color: subCompleted ? getStepTextColor(stepColor, isDark) : tc.text.muted,
+                              fontFamily: 'inherit',
+                              transition: 'all ' + animation.duration.fast,
+                            }}
+                          >
+                            {subCompleted ? (
+                              <ICONS.CHECK style={{ width: 14, height: 14, color: stepColor.main, flexShrink: 0 }} />
+                            ) : (
+                              <div style={{ width: 6, height: 6, borderRadius: radii.full, background: tc.border.medium, flexShrink: 0 }} />
+                            )}
+                            <span>{subStep.title}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* ═══ FOOTER ═══ */}
+        <div style={{ padding: isCollapsed ? (spacing.md + ' ' + spacing.sm) : rc.sidebar.footerPadding, borderTop: '1px solid ' + tc.border.light }}>
+          {!isCollapsed && (
+            <button onClick={() => onOpenAdminPanel()} style={{
+              width: '100%', textAlign: 'left', padding: spacing.sm + ' ' + spacing.lg, borderRadius: radii.lg,
+              border: 'none', background: 'transparent', cursor: 'pointer', fontSize: rc.sidebar.fontSize.footer,
+              color: isSuperAdmin ? '#D97706' : isDark ? '#A5B4FC' : tc.primary[600],
+              fontWeight: typography.fontWeight.medium,
+              display: 'flex', alignItems: 'center', gap: spacing.sm, marginBottom: isCompact ? '1px' : '2px', fontFamily: 'inherit',
+            }}>
+              <span>{footerIcon}</span>
+              {footerLabel}
+            </button>
+          )}
+          {isCollapsed && (
+            <button onClick={() => onOpenAdminPanel()} style={{
+              width: '100%', display: 'flex', justifyContent: 'center', padding: spacing.sm + ' 0',
+              borderRadius: radii.lg, border: 'none', background: 'transparent', cursor: 'pointer', marginBottom: isCompact ? '1px' : '2px',
+            }} title={footerLabel}>
+              <span style={{ fontSize: '18px' }}>{footerIcon}</span>
+            </button>
+          )}
+
+          {!isCollapsed && (
+            <button onClick={() => { toggleTheme(); }} style={{
+              width: '100%', textAlign: 'left', padding: spacing.sm + ' ' + spacing.lg, borderRadius: radii.lg,
+              border: 'none', background: 'transparent', cursor: 'pointer', fontSize: rc.sidebar.fontSize.footer,
+              color: tc.text.muted, display: 'flex', alignItems: 'center', gap: spacing.sm, marginBottom: isCompact ? '1px' : '2px', fontFamily: 'inherit',
+            }}>
+              {isDark ? (
+                <svg style={{ width: isCompact ? 14 : 16, height: isCompact ? 14 : 16 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+              ) : (
+                <svg style={{ width: isCompact ? 14 : 16, height: isCompact ? 14 : 16 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+              )}
+              <span>{isDark ? (language === 'si' ? 'Svetli nacin' : 'Light Mode') : (language === 'si' ? 'Temni nacin' : 'Dark Mode')}</span>
+            </button>
+          )}
+          {isCollapsed && (
+            <button onClick={() => { toggleTheme(); }} style={{
+              width: '100%', display: 'flex', justifyContent: 'center', padding: spacing.sm + ' 0',
+              borderRadius: radii.lg, border: 'none', background: 'transparent', cursor: 'pointer', marginBottom: isCompact ? '1px' : '2px', color: tc.text.muted,
+            }} title={isDark ? 'Light Mode' : 'Dark Mode'}>
+              {isDark ? (
+                <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+              ) : (
+                <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+              )}
+            </button>
+          )}
+
+          {/* ★ v3.3: User Guide link */}
+          {!isCollapsed && (
+            <a href="#" onClick={(e) => { e.preventDefault(); window.open('/guide.html', 'euroOfficeGuide'); }} rel="noopener noreferrer" style={{
+              width: '100%', textAlign: 'left', padding: spacing.sm + ' ' + spacing.lg, borderRadius: radii.lg,
+              border: 'none', background: 'transparent', cursor: 'pointer', fontSize: rc.sidebar.fontSize.footer,
+              color: tc.text.muted, display: 'flex', alignItems: 'center', gap: spacing.sm, marginBottom: isCompact ? '1px' : '2px', fontFamily: 'inherit',
+              textDecoration: 'none',
+            }}>
+              <svg style={{ width: isCompact ? 14 : 16, height: isCompact ? 14 : 16 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+              <span>{language === 'si' ? 'Uporabniski prirocnik' : 'User Guide'}</span>
+            </a>
+          )}
+          {isCollapsed && (
+            <a href="#" onClick={(e) => { e.preventDefault(); window.open('/guide.html', 'euroOfficeGuide'); }} rel="noopener noreferrer" style={{
+              width: '100%', display: 'flex', justifyContent: 'center', padding: spacing.sm + ' 0',
+              borderRadius: radii.lg, border: 'none', background: 'transparent', cursor: 'pointer', marginBottom: isCompact ? '1px' : '2px', color: tc.text.muted,
+              textDecoration: 'none',
+            }} title={language === 'si' ? 'Uporabniski prirocnik' : 'User Guide'}>
+              <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+            </a>
+          )}
+
+          {!isCollapsed && (
+            <button onClick={onLogout} style={{
+              width: '100%', textAlign: 'left', padding: spacing.sm + ' ' + spacing.lg, borderRadius: radii.lg,
+              border: 'none', background: 'transparent', cursor: 'pointer', fontSize: rc.sidebar.fontSize.footer,
+              color: tc.text.muted, display: 'flex', alignItems: 'center', gap: spacing.sm, fontFamily: 'inherit',
+            }}>
+              <svg style={{ width: isCompact ? 14 : 16, height: isCompact ? 14 : 16 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+              <span>{language === 'si' ? 'Odjava' : 'Logout'}</span>
+            </button>
+          )}
+          {isCollapsed && (
+            <button onClick={onLogout} style={{
+              width: '100%', display: 'flex', justifyContent: 'center', padding: spacing.sm + ' 0',
+              borderRadius: radii.lg, border: 'none', background: 'transparent', cursor: 'pointer', color: tc.text.muted,
+            }} title={language === 'si' ? 'Odjava' : 'Logout'}>
+              <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            </button>
+          )}
+
+          {!isCollapsed && (
+            <p style={{ fontSize: isCompact ? '9px' : '10px', color: tc.text.muted, textAlign: 'center', margin: spacing.sm + ' 0 0 0', opacity: 0.6 }}>
+              &copy; 2026 INFINITA d.o.o.{appVersion ? ' \u00B7 v' + appVersion : ''}
+            </p>
+          )}
+        </div>
+
+        {/* ═══ END SCROLLABLE CONTAINER ═══ */}
+        </div>
+      </aside>
+
+      {/* ★ v3.4: Collapse/Expand button — fixed position at top of sidebar, matching DashboardPanel style */}
+      {(isDesktop || isSidebarOpen) && (
+        <button
+          onClick={() => {
+            var next = !isCollapsed;
+            setIsCollapsed(next);
+            if (onCollapseChange) { onCollapseChange(next); }
+          }}
+          style={{
+            position: 'fixed',
+            top: 12,
+            left: sidebarWidth - 12,
+            width: 24,
+            height: 24,
+            borderRadius: radii.full,
+            background: tc.primary[500],
+            border: '2px solid ' + tc.surface.card,
+            color: tc.text.inverse,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            zIndex: zIndex.sidebar + 1,
+            boxShadow: shadows.md,
+            transition: 'left ' + animation.duration.normal + ' ' + animation.easing.default + ', transform ' + animation.duration.fast + ' ' + animation.easing.default,
+          }}
+          title={isCollapsed ? (language === 'si' ? 'Razsiri meni' : 'Expand') : (language === 'si' ? 'Strni meni' : 'Collapse')}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            {isCollapsed ? (
+              <path d="M4 2L8 6L4 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            ) : (
+              <path d="M8 2L4 6L8 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            )}
+          </svg>
+        </button>
+      )}
+    </>
+  );
+};
+
+export default Sidebar;
+
+// END OF Sidebar.tsx v3.13

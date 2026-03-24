@@ -1,0 +1,1758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Euro-Office User Guide / Uporabniški priročnik</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+  :root {
+    --bg-surface: #F8FAFC;
+    --bg-card: #FFFFFF;
+    --bg-sidebar: #0F172A;
+    --bg-sidebar-hover: #1E293B;
+    --bg-sidebar-active: #6366F1;
+    --text-heading: #0F172A;
+    --text-body: #334155;
+    --text-muted: #94A3B8;
+    --text-sidebar: rgba(255,255,255,0.7);
+    --text-sidebar-active: #FFFFFF;
+    --border-light: #E2E8F0;
+    --border-medium: #CBD5E1;
+    --primary: #6366F1;
+    --primary-light: #818CF8;
+    --primary-dark: #4F46E5;
+    --accent: #06B6D4;
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --error: #EF4444;
+    --red-500: #EF4444;
+    --orange-500: #F97316;
+    --amber-500: #F59E0B;
+    --yellow-500: #EAB308;
+    --lime-500: #84CC16;
+    --cyan-500: #06B6D4;
+    --sidebar-width: 280px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-surface);
+    color: var(--text-body);
+    line-height: 1.7;
+    font-size: 15px;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ═══ SIDEBAR ═══ */
+  .sidebar {
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+    background: var(--bg-sidebar);
+    color: var(--text-sidebar);
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    overflow-y: auto;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar::-webkit-scrollbar { width: 6px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+  .sidebar-logo {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .sidebar-logo img {
+    height: 36px;
+    filter: brightness(0) invert(1);
+  }
+
+  .sidebar-logo .logo-badge {
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--primary);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 0.5px;
+  }
+
+  .sidebar-nav {
+    padding: 16px 12px;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .sidebar-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: rgba(255,255,255,0.35);
+    padding: 16px 12px 8px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    color: var(--text-sidebar);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    margin-bottom: 2px;
+  }
+
+  .nav-item:hover {
+    background: var(--bg-sidebar-hover);
+    color: var(--text-sidebar-active);
+  }
+
+  .nav-item.active {
+    background: var(--bg-sidebar-active);
+    color: var(--text-sidebar-active);
+    font-weight: 600;
+  }
+
+  .nav-item .nav-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .nav-sub-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px 7px 36px;
+    border-radius: 6px;
+    color: rgba(255,255,255,0.5);
+    text-decoration: none;
+    font-size: 12.5px;
+    font-weight: 400;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    margin-bottom: 1px;
+  }
+
+  .nav-sub-item:hover {
+    background: var(--bg-sidebar-hover);
+    color: var(--text-sidebar-active);
+  }
+
+  .nav-sub-item.active {
+    color: var(--text-sidebar-active);
+    font-weight: 500;
+  }
+
+  .sidebar-footer {
+    padding: 16px 20px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+
+  .sidebar-footer a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255,255,255,0.4);
+    text-decoration: none;
+    font-size: 11px;
+    transition: color 0.15s;
+  }
+
+  .sidebar-footer a:hover { color: rgba(255,255,255,0.8); }
+
+  /* ═══ MAIN CONTENT ═══ */
+  .main-content {
+    margin-left: var(--sidebar-width);
+    flex: 1;
+    min-height: 100vh;
+  }
+
+  .top-bar {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-light);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .top-bar h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-heading);
+  }
+
+  .top-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .top-bar .version-badge {
+    font-size: 11px;
+    background: #EEF2FF;
+    color: var(--primary);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-weight: 600;
+  }
+
+  .lang-switch {
+    display: flex;
+    gap: 2px;
+    background: #F1F5F9;
+    border-radius: 8px;
+    padding: 2px;
+  }
+
+  .lang-btn {
+    padding: 4px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+  }
+
+  .lang-btn.active {
+    background: var(--primary);
+    color: white;
+  }
+
+  .content-area {
+    padding: 32px 48px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  /* ═══ SECTION CARDS ═══ */
+  .section-card {
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-light);
+    padding: 32px;
+    margin-bottom: 24px;
+    animation: cardAppear 0.4s ease-out both;
+  }
+
+  @keyframes cardAppear {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .section-card h2 {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: var(--text-heading);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-card h2 .section-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .section-card h3 {
+    font-size: 1.15em;
+    font-weight: 600;
+    color: var(--text-heading);
+    margin: 24px 0 10px;
+  }
+
+  .section-card p {
+    margin-bottom: 12px;
+    color: var(--text-body);
+    line-height: 1.75;
+  }
+
+  /* ═══ STEP LIST ═══ */
+  .step-list {
+    list-style: none;
+    padding: 0;
+    margin: 14px 0;
+  }
+
+  .step-list li {
+    padding: 10px 16px 10px 48px;
+    position: relative;
+    margin-bottom: 6px;
+    border-radius: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    font-size: 14px;
+  }
+
+  .step-list li::before {
+    content: attr(data-step);
+    position: absolute;
+    left: 12px;
+    top: 10px;
+    width: 26px;
+    height: 26px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ═══ TABLES ═══ */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13.5px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border-light);
+  }
+
+  thead { background: var(--primary); color: white; }
+  th { padding: 10px 14px; text-align: left; font-weight: 600; font-size: 12.5px; }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border-light); }
+  tbody tr:hover { background: #F1F5F9; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  /* ═══ INFO BOXES ═══ */
+  .tip-box {
+    background: linear-gradient(135deg, #EFF6FF, #DBEAFE);
+    border-left: 4px solid var(--primary);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 14px 0;
+    font-size: 13.5px;
+  }
+
+  .tip-box .tip-label {
+    font-weight: 700;
+    color: var(--primary-dark);
+    margin-bottom: 4px;
+    font-size: 12.5px;
+  }
+
+  .warning-box {
+    background: linear-gradient(135deg, #FFFBEB, #FEF3C7);
+    border-left: 4px solid var(--warning);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 14px 0;
+    font-size: 13.5px;
+  }
+
+  .warning-box .tip-label {
+    font-weight: 700;
+    color: #B45309;
+    margin-bottom: 4px;
+    font-size: 12.5px;
+  }
+
+  .success-box {
+    background: linear-gradient(135deg, #F0FDF4, #DCFCE7);
+    border-left: 4px solid var(--success);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 14px 0;
+    font-size: 13.5px;
+  }
+
+  .success-box .tip-label {
+    font-weight: 700;
+    color: #15803D;
+    margin-bottom: 4px;
+    font-size: 12.5px;
+  }
+
+  .new-box {
+    background: linear-gradient(135deg, #F0FDF4, #D1FAE5);
+    border-left: 4px solid #10B981;
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 14px 0;
+    font-size: 13.5px;
+  }
+
+  .new-box .tip-label {
+    font-weight: 700;
+    color: #059669;
+    margin-bottom: 4px;
+    font-size: 12.5px;
+  }
+
+  /* ═══ MODE CARDS ═══ */
+  .mode-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    margin: 16px 0;
+  }
+
+  .mode-card {
+    padding: 18px;
+    border-radius: 10px;
+    border: 2px solid var(--border-light);
+    text-align: center;
+    transition: all 0.2s;
+  }
+
+  .mode-card:hover {
+    border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99,102,241,0.12);
+  }
+
+  .mode-card .mode-icon { font-size: 1.8em; margin-bottom: 6px; }
+  .mode-card h4 { margin: 6px 0 4px; color: var(--primary-dark); font-size: 14px; }
+  .mode-card p { font-size: 12px; color: var(--text-muted); margin: 0; }
+
+  /* ═══ WORKFLOW STEPS ═══ */
+  .workflow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0;
+  }
+
+  .workflow-step {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px;
+    background: var(--bg-surface);
+    border-radius: 10px;
+    border: 1px solid var(--border-light);
+    transition: all 0.2s;
+  }
+
+  .workflow-step:hover {
+    border-color: var(--primary-light);
+    box-shadow: 0 2px 8px rgba(99,102,241,0.08);
+  }
+
+  .workflow-step .step-num {
+    width: 36px;
+    height: 36px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+
+  .workflow-step .step-content h4 { margin: 0 0 2px; color: var(--text-heading); font-size: 14px; }
+  .workflow-step .step-content p { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+
+  /* ═══ BADGES ═══ */
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .badge-blue { background: #DBEAFE; color: #1D4ED8; }
+  .badge-green { background: #DCFCE7; color: #15803D; }
+  .badge-yellow { background: #FEF3C7; color: #B45309; }
+  .badge-red { background: #FEE2E2; color: #DC2626; }
+  .badge-purple { background: #EDE9FE; color: #6D28D9; }
+  .badge-new { background: linear-gradient(135deg, #059669, #10B981); color: white; font-size: 10px; font-weight: 700; padding: 2px 8px; letter-spacing: 0.3px; }
+
+  code {
+    background: #F1F5F9;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--primary-dark);
+  }
+
+  /* ═══ LANG TOGGLE CONTENT ═══ */
+  .lang-en, .lang-si { display: none; }
+  body.lang-active-en .lang-en { display: block; }
+  body.lang-active-si .lang-si { display: block; }
+  body.lang-active-en .lang-en-inline { display: inline; }
+  body.lang-active-si .lang-si-inline { display: inline; }
+  body.lang-active-en .lang-si-inline { display: none; }
+  body.lang-active-si .lang-en-inline { display: none; }
+
+  /* ═══ MOBILE RESPONSIVE ═══ */
+  .mobile-toggle {
+    display: none;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 200;
+    background: var(--bg-sidebar);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 20px;
+  }
+
+  @media (max-width: 860px) {
+    .mobile-toggle { display: block; }
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); }
+    .main-content { margin-left: 0; }
+    .top-bar { padding-left: 56px; }
+    .content-area { padding: 20px 16px; }
+    .mode-cards { grid-template-columns: 1fr; }
+  }
+
+  /* ═══ PRINT ═══ */
+  @media print {
+    .sidebar, .mobile-toggle, .top-bar { display: none !important; }
+    .main-content { margin-left: 0; }
+    .section-card { break-inside: avoid; box-shadow: none; border: 1px solid #ccc; }
+    body { font-size: 11pt; }
+  }
+</style>
+</head>
+<body class="lang-active-en">
+
+<button class="mobile-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+
+<!-- ═══════════ SIDEBAR ═══════════ -->
+<nav class="sidebar">
+    <div class="sidebar-logo">
+    <a href="#" onclick="return returnToApp()" style="display:flex;align-items:center;gap:12px;text-decoration:none;">
+      <img src="/euro-office-logo.png" alt="Euro-Office">
+      <span class="logo-badge">GUIDE</span>
+    </a>
+  </div>
+
+  <div class="sidebar-nav">
+    <div class="sidebar-section-label lang-en">Getting Started</div>
+    <div class="sidebar-section-label lang-si">Začetek</div>
+    <a class="nav-item active" href="#s1" onclick="navigateTo(this, 's1')">
+      <span class="nav-dot" style="background:#6366F1"></span>
+      <span class="lang-en-inline">Registration &amp; Login</span>
+      <span class="lang-si-inline">Registracija in prijava</span>
+    </a>
+    <a class="nav-item" href="#s2" onclick="navigateTo(this, 's2')">
+      <span class="nav-dot" style="background:#6366F1"></span>
+      <span class="lang-en-inline">Application Overview</span>
+      <span class="lang-si-inline">Pregled aplikacije</span>
+    </a>
+    <a class="nav-item" href="#s3" onclick="navigateTo(this, 's3')">
+      <span class="nav-dot" style="background:#6366F1"></span>
+      <span class="lang-en-inline">AI Configuration</span>
+      <span class="lang-si-inline">Konfiguracija AI</span>
+    </a>
+    <a class="nav-item" href="#s4" onclick="navigateTo(this, 's4')">
+      <span class="nav-dot" style="background:#6366F1"></span>
+      <span class="lang-en-inline">Creating a Project</span>
+      <span class="lang-si-inline">Ustvarjanje projekta</span>
+    </a>
+
+    <div class="sidebar-section-label lang-en">AI Features</div>
+    <div class="sidebar-section-label lang-si">AI Funkcije</div>
+    <a class="nav-item" href="#s5" onclick="navigateTo(this, 's5')">
+      <span class="nav-dot" style="background:#8B5CF6"></span>
+      <span class="lang-en-inline">AI Generation Modes</span>
+      <span class="lang-si-inline">Načini AI generiranja</span>
+    </a>
+    <a class="nav-sub-item" href="#s5b" onclick="navigateTo(this, 's5b')">
+      <span class="lang-en-inline">✨ AI Assistant</span>
+      <span class="lang-si-inline">✨ AI Asistent</span>
+      <span class="badge-new" style="margin-left:4px">NEW</span>
+    </a>
+    <a class="nav-sub-item" href="#s5c" onclick="navigateTo(this, 's5c')">
+      <span class="lang-en-inline">🔍 Web Search</span>
+      <span class="lang-si-inline">🔍 Spletno iskanje</span>
+      <span class="badge-new" style="margin-left:4px">NEW</span>
+    </a>
+
+    <div class="sidebar-section-label lang-en">Intervention Logic</div>
+    <div class="sidebar-section-label lang-si">Intervencijska logika</div>
+    <a class="nav-item" href="#s6" onclick="navigateTo(this, 's6')">
+      <span class="nav-dot" style="background:var(--red-500)"></span>
+      <span class="lang-en-inline">Problem Analysis</span>
+      <span class="lang-si-inline">Analiza problema</span>
+    </a>
+    <a class="nav-item" href="#s7" onclick="navigateTo(this, 's7')">
+      <span class="nav-dot" style="background:var(--orange-500)"></span>
+      <span class="lang-en-inline">Project Idea</span>
+      <span class="lang-si-inline">Projektna ideja</span>
+    </a>
+    <a class="nav-item" href="#s8" onclick="navigateTo(this, 's8')">
+      <span class="nav-dot" style="background:var(--amber-500)"></span>
+      <span class="lang-en-inline">Objectives</span>
+      <span class="lang-si-inline">Cilji</span>
+    </a>
+    <a class="nav-item" href="#s9" onclick="navigateTo(this, 's9')">
+      <span class="nav-dot" style="background:var(--lime-500)"></span>
+      <span class="lang-en-inline">Activities (WPs)</span>
+      <span class="lang-si-inline">Aktivnosti (DS)</span>
+    </a>
+    <a class="nav-sub-item" href="#s10" onclick="navigateTo(this, 's10')">
+      <span class="lang-en-inline">Project Management</span>
+      <span class="lang-si-inline">Vodenje projekta</span>
+    </a>
+    <a class="nav-sub-item" href="#s11" onclick="navigateTo(this, 's11')">
+      <span class="lang-en-inline">Risk Register</span>
+      <span class="lang-si-inline">Register tveganj</span>
+    </a>
+    <a class="nav-item" href="#s12" onclick="navigateTo(this, 's12')">
+      <span class="nav-dot" style="background:var(--cyan-500)"></span>
+      <span class="lang-en-inline">Expected Results</span>
+      <span class="lang-si-inline">Pričakovani rezultati</span>
+    </a>
+
+    <div class="sidebar-section-label lang-en">Consortium &amp; Finance</div>
+    <div class="sidebar-section-label lang-si">Konzorcij in finance</div>
+    <a class="nav-item" href="#s13" onclick="navigateTo(this, 's13')">
+      <span class="nav-dot" style="background:#8B5CF6"></span>
+      <span class="lang-en-inline">Partnership</span>
+      <span class="lang-si-inline">Partnerstvo</span>
+    </a>
+    <a class="nav-item" href="#s14" onclick="navigateTo(this, 's14')">
+      <span class="nav-dot" style="background:#EC4899"></span>
+      <span class="lang-en-inline">Finance</span>
+      <span class="lang-si-inline">Finance</span>
+    </a>
+
+    <div class="sidebar-section-label lang-en">Visualization &amp; Export</div>
+    <div class="sidebar-section-label lang-si">Vizualizacija in izvoz</div>
+    <a class="nav-item" href="#s15" onclick="navigateTo(this, 's15')">
+      <span class="nav-dot" style="background:#14B8A6"></span>
+      <span class="lang-en-inline">Dashboard Panel</span>
+      <span class="lang-si-inline">Nadzorna plošča</span>
+    </a>
+    <a class="nav-item" href="#s16" onclick="navigateTo(this, 's16')">
+      <span class="nav-dot" style="background:#0EA5E9"></span>
+      <span class="lang-en-inline">Gantt, PERT, Organigram</span>
+      <span class="lang-si-inline">Gantt, PERT, Organigram</span>
+    </a>
+    <a class="nav-item" href="#s17" onclick="navigateTo(this, 's17')">
+      <span class="nav-dot" style="background:#64748B"></span>
+      <span class="lang-en-inline">Export &amp; Print</span>
+      <span class="lang-si-inline">Izvoz in tisk</span>
+    </a>
+
+    <div class="sidebar-section-label">Admin</div>
+    <a class="nav-item" href="#s18" onclick="navigateTo(this, 's18')">
+      <span class="nav-dot" style="background:#F97316"></span>
+      <span class="lang-en-inline">Admin Panel</span>
+      <span class="lang-si-inline">Administracijska plošča</span>
+    </a>
+    <a class="nav-item" href="#s19" onclick="navigateTo(this, 's19')">
+      <span class="nav-dot" style="background:#22C55E"></span>
+      <span class="lang-en-inline">Tips &amp; Troubleshooting</span>
+      <span class="lang-si-inline">Namigi in pomoč</span>
+    </a>
+  </div>
+
+    <div class="sidebar-footer">
+    <a href="#" onclick="return returnToApp()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      <span class="lang-en-inline">Back to Euro-Office</span>
+      <span class="lang-si-inline">Nazaj v Euro-Office</span>
+    </a>
+  </div>
+</nav>
+
+<!-- ═══════════ MAIN CONTENT ═══════════ -->
+<div class="main-content">
+  <div class="top-bar">
+    <h1>
+      <span class="lang-en-inline">User Guide</span>
+      <span class="lang-si-inline">Uporabniški priročnik</span>
+    </h1>
+    <div class="top-bar-right">
+      <div class="lang-switch">
+        <button class="lang-btn active" id="btn-en" onclick="switchLang('en')">EN</button>
+        <button class="lang-btn" id="btn-si" onclick="switchLang('si')">SI</button>
+      </div>
+      <span class="version-badge">v1.1.0 &bull; Mar 2026</span>
+    </div>
+  </div>
+
+  <div class="content-area">
+
+    <!-- ═══ S1: REGISTRATION ═══ -->
+    <div class="section-card" id="s1">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--primary)"></span> 1. Registration &amp; Login</h2>
+        <h3>1.1 Registration</h3>
+        <ol class="step-list">
+          <li data-step="1">Open your browser and navigate to <strong>https://euro-office.net</strong></li>
+          <li data-step="2">Click <strong>"Register here"</strong> at the bottom of the login form</li>
+          <li data-step="3">Fill in your <strong>E-mail Address</strong> (must be valid) and <strong>Password</strong> (minimum 6 characters)</li>
+          <li data-step="4">Click <strong>"Register"</strong></li>
+          <li data-step="5">Check your email inbox for a <strong>confirmation email</strong> and click the activation link</li>
+          <li data-step="6">Return to https://euro-office.net and log in with your credentials</li>
+        </ol>
+        <h3>1.2 Login</h3>
+        <ol class="step-list">
+          <li data-step="1">Enter your <strong>E-mail Address</strong> and <strong>Password</strong></li>
+          <li data-step="2">Click <strong>"Login"</strong></li>
+          <li data-step="3">If 2FA is enabled, enter the verification code from your authenticator app</li>
+          <li data-step="4">You will be taken to the <strong>Home Screen</strong></li>
+        </ol>
+        <h3>1.3 Language Selection</h3>
+        <p>In the <strong>top-right corner</strong>, click <strong>SI</strong> or <strong>EN</strong> to switch the interface and AI generation language. The active language is highlighted in blue.</p>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--primary)"></span> 1. Registracija in prijava</h2>
+        <h3>1.1 Registracija</h3>
+        <ol class="step-list">
+          <li data-step="1">Odprite brskalnik in pojdite na <strong>https://euro-office.net</strong></li>
+          <li data-step="2">Kliknite <strong>"Registracija tukaj"</strong> na dnu prijavnega obrazca</li>
+          <li data-step="3">Vnesite <strong>e-poštni naslov</strong> (mora biti veljaven) in <strong>geslo</strong> (najmanj 6 znakov)</li>
+          <li data-step="4">Kliknite <strong>"Registracija"</strong></li>
+          <li data-step="5">Preverite svojo e-pošto za <strong>potrditveno sporočilo</strong> in kliknite aktivacijsko povezavo</li>
+          <li data-step="6">Vrnite se na Euro-Office in se prijavite s svojimi podatki</li>
+        </ol>
+        <h3>1.2 Prijava</h3>
+        <ol class="step-list">
+          <li data-step="1">Vnesite <strong>e-poštni naslov</strong> in <strong>geslo</strong></li>
+          <li data-step="2">Kliknite <strong>"Prijava"</strong></li>
+          <li data-step="3">Če je omogočena dvostopenjska avtentikacija (2FA), vnesite kodo iz aplikacije za avtentikacijo</li>
+          <li data-step="4">Preusmerjeni boste na <strong>Domačo stran</strong></li>
+        </ol>
+        <h3>1.3 Izbira jezika</h3>
+        <p>V <strong>zgornjem desnem kotu</strong> kliknite <strong>SI</strong> ali <strong>EN</strong> za preklop jezika vmesnika in AI generiranja. Aktiven jezik je označen z modro.</p>
+      </div>
+    </div>
+
+    <!-- ═══ S2: APPLICATION OVERVIEW ═══ -->
+    <div class="section-card" id="s2">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--primary)"></span> 2. Application Overview</h2>
+        <h3>2.1 Main Layout</h3>
+        <table>
+          <thead><tr><th>Area</th><th>Position</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Sidebar</strong></td><td>Left</td><td>Navigation menu with all project chapters and sub-sections</td></tr>
+            <tr><td><strong>Editor</strong></td><td>Centre</td><td>Main workspace for viewing and editing project content</td></tr>
+            <tr><td><strong>Dashboard</strong></td><td>Right</td><td>Statistical overview with auto-generated charts (collapsible)</td></tr>
+          </tbody>
+        </table>
+        <h3>2.2 Sidebar Navigation &mdash; Intervention Logic Framework</h3>
+        <p>The sidebar follows the <strong>Intervention Logic Framework</strong> &mdash; the structured cause-and-effect chain from problem to impact that is the backbone of every EU project proposal:</p>
+        <table>
+          <thead><tr><th>Chapter</th><th>Section</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-red">Ch.1</span></td><td><strong>Problem Analysis</strong></td><td>Core problem, causes, consequences</td></tr>
+            <tr><td><span class="badge badge-yellow">Ch.2</span></td><td><strong>Project Idea</strong></td><td>Title, acronym, aim, state of the art, solution, policies, readiness</td></tr>
+            <tr><td><span class="badge badge-yellow">Ch.3-4</span></td><td><strong>Objectives</strong></td><td>General objectives &amp; specific S.M.A.R.T. objectives</td></tr>
+            <tr><td><span class="badge badge-green">Ch.5</span></td><td><strong>Activities</strong></td><td>Work packages, project management, risks, partnership, finance</td></tr>
+            <tr><td><span class="badge badge-blue">Ch.6</span></td><td><strong>Expected Results</strong></td><td>Outputs, outcomes, impacts, KERs</td></tr>
+          </tbody>
+        </table>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; The Golden Thread</div>
+          <p>Every chapter logically flows from the previous one: Problem &rarr; Solution &rarr; Objectives &rarr; Activities &rarr; Results. EU evaluators check this chain for consistency. Euro-Office enforces this through AI cross-referencing.</p>
+        </div>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--primary)"></span> 2. Pregled aplikacije</h2>
+        <h3>2.1 Glavna postavitev</h3>
+        <table>
+          <thead><tr><th>Področje</th><th>Položaj</th><th>Namen</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Stranska vrstica</strong></td><td>Levo</td><td>Navigacijski meni z vsemi poglavji in podsekcijami</td></tr>
+            <tr><td><strong>Urejevalnik</strong></td><td>Sredina</td><td>Glavni delovni prostor za urejanje vsebine</td></tr>
+            <tr><td><strong>Nadzorna plošča</strong></td><td>Desno</td><td>Statistični pregled z avtomatsko generiranimi grafi (zložljivo)</td></tr>
+          </tbody>
+        </table>
+        <h3>2.2 Navigacija &mdash; Okvir intervencijske logike</h3>
+        <p>Stranska vrstica sledi <strong>Okviru intervencijske logike</strong> &mdash; strukturirani verigi vzrokov in posledic od problema do vpliva:</p>
+        <table>
+          <thead><tr><th>Poglavje</th><th>Sekcija</th><th>Opis</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-red">Pgl.1</span></td><td><strong>Analiza problema</strong></td><td>Osrednji problem, vzroki, posledice</td></tr>
+            <tr><td><span class="badge badge-yellow">Pgl.2</span></td><td><strong>Projektna ideja</strong></td><td>Naslov, akronim, cilj, stanje tehnike, rešitev, politike, pripravljenost</td></tr>
+            <tr><td><span class="badge badge-yellow">Pgl.3-4</span></td><td><strong>Cilji</strong></td><td>Splošni cilji in specifični S.M.A.R.T. cilji</td></tr>
+            <tr><td><span class="badge badge-green">Pgl.5</span></td><td><strong>Aktivnosti</strong></td><td>Delovni sklopi, vodenje projekta, tveganja, partnerstvo, finance</td></tr>
+            <tr><td><span class="badge badge-blue">Pgl.6</span></td><td><strong>Pričakovani rezultati</strong></td><td>Proizvodi, učinki, vplivi, KER-ji</td></tr>
+          </tbody>
+        </table>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Zlata nit</div>
+          <p>Vsako poglavje logično izhaja iz prejšnjega: Problem &rarr; Rešitev &rarr; Cilji &rarr; Aktivnosti &rarr; Rezultati. EU ocenjevalci preverjajo to verigo. Euro-Office jo zagotavlja s pomočjo AI navzkrižnega sklicevanja.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ S3: AI CONFIGURATION ═══ -->
+    <div class="section-card" id="s3">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--primary)"></span> 3. AI Configuration &amp; Settings</h2>
+        <div class="warning-box">
+          <div class="tip-label">&#9888; IMPORTANT &mdash; DO THIS FIRST</div>
+          <p>Without a valid API key, AI generation will not work. You can still manually fill in all fields, but AI-powered features (Fill, Enhance, Regenerate, AI Assistant) require an API key.</p>
+        </div>
+        <h3>3.1 Setting Up Your AI Provider</h3>
+        <ol class="step-list">
+          <li data-step="1">Click the <strong>Settings gear icon</strong> (&#9881;) in the top-right corner</li>
+          <li data-step="2">Select your <strong>AI Provider</strong>:
+            <br><span class="badge badge-green">Recommended</span> <strong>Gemini</strong> (Google) &mdash; generous free tier, fast, web search supported
+            <br><span class="badge badge-blue">Alternative</span> <strong>OpenRouter</strong> &mdash; multiple models, web search supported
+            <br><span class="badge badge-blue">Alternative</span> <strong>OpenAI</strong> &mdash; GPT models, paid key, no web search
+          </li>
+          <li data-step="3">Paste your <strong>API Key</strong></li>
+          <li data-step="4">Select the <strong>Primary Model</strong> (e.g., <code>gemini-2.5-flash-lite</code>)</li>
+          <li data-step="5">Optionally select a <strong>Secondary Model</strong> as fallback <span class="badge badge-new">NEW</span></li>
+          <li data-step="6">Click <strong>"Save"</strong></li>
+        </ol>
+        <h3>3.2 Getting a Free Gemini API Key</h3>
+        <ol class="step-list">
+          <li data-step="1">Go to <strong>https://aistudio.google.com/apikey</strong></li>
+          <li data-step="2">Sign in with your Google account</li>
+          <li data-step="3">Click <strong>"Create API Key"</strong></li>
+          <li data-step="4">Copy the key and paste it into Euro-Office Settings</li>
+        </ol>
+        <div class="success-box">
+          <div class="tip-label">&#10004; Free Tier</div>
+          <p>Gemini's free tier allows approximately 15 requests per minute &mdash; sufficient for generating all project sections. No credit card required.</p>
+        </div>
+        <h3 id="s5c">3.3 Web Search for Evidence <span class="badge badge-new">NEW</span></h3>
+        <p>When enabled, the AI will <strong>actively search the internet</strong> for current data, statistics, citations and sources while generating content. This ensures your proposal contains up-to-date, verifiable information.</p>
+        <ol class="step-list">
+          <li data-step="1">In Settings, find the <strong>"Web Search for Evidence"</strong> section</li>
+          <li data-step="2">Toggle the checkbox to <strong>ON</strong></li>
+          <li data-step="3">Click <strong>"Save"</strong></li>
+        </ol>
+        <table>
+          <thead><tr><th>Provider</th><th>How Web Search Works</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Gemini</strong></td><td>Uses Google Search grounding &mdash; AI directly queries Google for real-time data</td></tr>
+            <tr><td><strong>OpenRouter</strong></td><td>Uses web plugin &mdash; AI searches the web via Exa for current sources</td></tr>
+            <tr><td><strong>OpenAI</strong></td><td>Not supported &mdash; use Gemini or OpenRouter for web search</td></tr>
+          </tbody>
+        </table>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; When does it search?</div>
+          <p>Web search activates only for content-heavy analytical sections (Problem Analysis, Project Idea, State of the Art, Objectives, Expected Results). Structural sections (Risks, Finance, Project Management) do not trigger web searches.</p>
+        </div>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--primary)"></span> 3. Konfiguracija AI in nastavitve</h2>
+        <div class="warning-box">
+          <div class="tip-label">&#9888; POMEMBNO &mdash; NAREDITE TO NAJPREJ</div>
+          <p>Brez veljavnega API ključa AI generiranje ne bo delovalo. Polja lahko še vedno izpolnite ročno, vendar AI funkcije (Izpolni, Izboljšaj, Regeneriraj, AI Asistent) zahtevajo API ključ.</p>
+        </div>
+        <h3>3.1 Nastavitev AI ponudnika</h3>
+        <ol class="step-list">
+          <li data-step="1">Kliknite <strong>ikono nastavitev</strong> (&#9881;) v zgornjem desnem kotu</li>
+          <li data-step="2">Izberite <strong>AI ponudnika</strong>:
+            <br><span class="badge badge-green">Priporočeno</span> <strong>Gemini</strong> (Google) &mdash; brezplačno, hitro, spletno iskanje podprto
+            <br><span class="badge badge-blue">Alternativa</span> <strong>OpenRouter</strong> &mdash; več modelov, spletno iskanje podprto
+            <br><span class="badge badge-blue">Alternativa</span> <strong>OpenAI</strong> &mdash; GPT modeli, plačljivo, brez spletnega iskanja
+          </li>
+          <li data-step="3">Prilepite <strong>API ključ</strong></li>
+          <li data-step="4">Izberite <strong>Primarni model</strong> (npr. <code>gemini-2.5-flash-lite</code>)</li>
+          <li data-step="5">Po želji izberite <strong>Sekundarni model</strong> kot rezervo <span class="badge badge-new">NOVO</span></li>
+          <li data-step="6">Kliknite <strong>"Shrani"</strong></li>
+        </ol>
+        <h3>3.2 Brezplačen Gemini API ključ</h3>
+        <ol class="step-list">
+          <li data-step="1">Pojdite na <strong>https://aistudio.google.com/apikey</strong></li>
+          <li data-step="2">Prijavite se z Google računom</li>
+          <li data-step="3">Kliknite <strong>"Create API Key"</strong></li>
+          <li data-step="4">Kopirajte ključ in ga prilepite v nastavitve Euro-Office</li>
+        </ol>
+        <div class="success-box">
+          <div class="tip-label">&#10004; Brezplačno</div>
+          <p>Gemini brezplačna raven omogoča približno 15 zahtevkov na minuto &mdash; dovolj za generiranje vseh sekcij. Kreditna kartica ni potrebna.</p>
+        </div>
+        <h3>3.3 Spletno iskanje za dokaze <span class="badge badge-new">NOVO</span></h3>
+        <p>Ko je omogočeno, bo AI <strong>aktivno iskal po internetu</strong> za aktualne podatke, statistike, citate in vire med generiranjem vsebine.</p>
+        <ol class="step-list">
+          <li data-step="1">V nastavitvah poiščite razdelek <strong>"Spletno iskanje za dokaze"</strong></li>
+          <li data-step="2">Obkljukajte potrditveno polje na <strong>VKLOPLJENO</strong></li>
+          <li data-step="3">Kliknite <strong>"Shrani"</strong></li>
+        </ol>
+        <table>
+          <thead><tr><th>Ponudnik</th><th>Kako deluje spletno iskanje</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Gemini</strong></td><td>Uporabi Google Search &mdash; AI neposredno poizveduje po Googlu za podatke v realnem času</td></tr>
+            <tr><td><strong>OpenRouter</strong></td><td>Uporabi spletni vtičnik &mdash; AI išče po spletu prek Exa za aktualne vire</td></tr>
+            <tr><td><strong>OpenAI</strong></td><td>Ni podprto &mdash; uporabite Gemini ali OpenRouter</td></tr>
+          </tbody>
+        </table>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Kdaj išče?</div>
+          <p>Spletno iskanje se aktivira samo za vsebinsko bogate sekcije (Analiza problema, Projektna ideja, Stanje tehnike, Cilji, Rezultati). Strukturne sekcije (Tveganja, Finance, Vodenje) ne sprožijo iskanja.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ S4: CREATING A PROJECT ═══ -->
+    <div class="section-card" id="s4">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--primary)"></span> 4. Creating a Project</h2>
+        <h3>4.1 New Project</h3>
+        <ol class="step-list">
+          <li data-step="1">From the Home screen, click <strong>"+ New Project"</strong></li>
+          <li data-step="2">Enter a <strong>Project Title</strong> (working title &mdash; AI can refine it later)</li>
+          <li data-step="3">Select <strong>Language</strong>: EN (English) or SI (Slovenian)</li>
+          <li data-step="4">Set the <strong>Start Date</strong> and <strong>Duration</strong> in months (e.g., 24, 36)</li>
+          <li data-step="5">Choose <strong>Funding Model</strong>: Centralized or Decentralized</li>
+          <li data-step="6">Click <strong>"Create"</strong></li>
+        </ol>
+        <h3>4.2 Project List Actions</h3>
+        <table>
+          <thead><tr><th>Action</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Open</strong></td><td>Opens the project in the editor</td></tr>
+            <tr><td><strong>Duplicate</strong></td><td>Creates a complete copy of the project</td></tr>
+            <tr><td><strong>Delete</strong></td><td>Permanently removes the project (with confirmation)</td></tr>
+            <tr><td><strong>QR Code</strong></td><td>Generates a shareable QR code</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--primary)"></span> 4. Ustvarjanje projekta</h2>
+        <h3>4.1 Nov projekt</h3>
+        <ol class="step-list">
+          <li data-step="1">Na domači strani kliknite <strong>"+ Nov projekt"</strong></li>
+          <li data-step="2">Vnesite <strong>Naslov projekta</strong> (delovni naslov &mdash; AI ga lahko pozneje izpopolni)</li>
+          <li data-step="3">Izberite <strong>Jezik</strong>: EN (angleščina) ali SI (slovenščina)</li>
+          <li data-step="4">Nastavite <strong>Datum začetka</strong> in <strong>Trajanje</strong> v mesecih (npr. 24, 36)</li>
+          <li data-step="5">Izberite <strong>Model financiranja</strong>: Centralizirani ali Decentralizirani</li>
+          <li data-step="6">Kliknite <strong>"Ustvari"</strong></li>
+        </ol>
+        <h3>4.2 Dejanja na seznamu projektov</h3>
+        <table>
+          <thead><tr><th>Dejanje</th><th>Opis</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Odpri</strong></td><td>Odpre projekt v urejevalniku</td></tr>
+            <tr><td><strong>Podvoji</strong></td><td>Ustvari popolno kopijo projekta</td></tr>
+            <tr><td><strong>Izbriši</strong></td><td>Trajno odstrani projekt (s potrditvijo)</td></tr>
+            <tr><td><strong>QR koda</strong></td><td>Generira QR kodo za deljenje</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ S5: AI GENERATION MODES ═══ -->
+    <div class="section-card" id="s5">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:#8B5CF6"></span> 5. AI Generation Modes</h2>
+        <h3>5.1 Section-Level Generation</h3>
+        <p>At the top of each section, you will find three generation buttons:</p>
+        <div class="mode-cards">
+          <div class="mode-card">
+            <div class="mode-icon">&#128221;</div>
+            <h4>Fill</h4>
+            <p>Fills only empty fields. Keeps existing content untouched.</p>
+          </div>
+          <div class="mode-card">
+            <div class="mode-icon">&#10024;</div>
+            <h4>Enhance</h4>
+            <p>Deepens existing content. Adds citations, EU terminology, evidence.</p>
+          </div>
+          <div class="mode-card">
+            <div class="mode-icon">&#128260;</div>
+            <h4>Regenerate</h4>
+            <p>Creates completely new content from scratch. Replaces existing data.</p>
+          </div>
+        </div>
+
+        <h3 id="s5b">5.2 Field-Level AI Assistant <span class="badge badge-new">NEW</span></h3>
+        <p>Every text field now has a dedicated <strong>AI Assistant button</strong> (&#10024; icon) that appears when you hover over the field, in the top-right corner. This opens a contextual popup where you can:</p>
+        <ol class="step-list">
+          <li data-step="1"><strong>See the current field content</strong> &mdash; the popup shows what's already in the field</li>
+          <li data-step="2"><strong>Enter specific instructions</strong> &mdash; tell the AI exactly what you want (e.g., "add ISO references", "make it more formal", "expand with examples from Western Balkans")</li>
+          <li data-step="3"><strong>Generate / Regenerate</strong> &mdash; AI generates content using your instructions, field value, full project context, knowledge base, and all rules</li>
+          <li data-step="4"><strong>Preview the result</strong> &mdash; review before accepting</li>
+          <li data-step="5"><strong>Accept or Regenerate</strong> &mdash; accept to replace field content, or regenerate with modified instructions</li>
+        </ol>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Pro Tip</div>
+          <p>The field-level AI Assistant is far more powerful than section-level generation because you can give precise, contextual instructions for each individual field. Use it to fine-tune paragraphs, add specific references, or adjust tone. Press <code>Ctrl+Enter</code> to generate quickly.</p>
+        </div>
+
+        <h3>5.3 Evidence-Based Content &amp; Citations <span class="badge badge-new">NEW</span></h3>
+        <p>Euro-Office enforces strict academic rigor in all generated content:</p>
+        <table>
+          <thead><tr><th>Rule</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Mandatory empirical data</strong></td><td>Every analytical paragraph must contain at least one verified data point with source attribution</td></tr>
+            <tr><td><strong>APA-style citations</strong></td><td>Author surnames, publication year, at least 30% author-named citations</td></tr>
+            <tr><td><strong>Zero-hallucination policy</strong></td><td>AI is forbidden from fabricating sources, URLs, authors, or statistics</td></tr>
+            <tr><td><strong>Source hierarchy</strong></td><td>Local/regional data first, then Eurostat, OECD, EC, scientific publications</td></tr>
+          </tbody>
+        </table>
+
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Recommended Workflow</div>
+          <p>Write your core problem title and a few sentences manually. Click <strong>Regenerate</strong> for the full AI analysis. Review, then use <strong>Enhance</strong> for more citations. Use the <strong>AI Assistant</strong> on individual fields for fine-tuning.</p>
+        </div>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:#8B5CF6"></span> 5. Načini AI generiranja</h2>
+        <h3>5.1 Generiranje na ravni sekcije</h3>
+        <p>Na vrhu vsake sekcije so trije gumbi za generiranje:</p>
+        <div class="mode-cards">
+          <div class="mode-card">
+            <div class="mode-icon">&#128221;</div>
+            <h4>Izpolni</h4>
+            <p>Izpolni samo prazna polja. Obstoječo vsebino pusti nedotaknjeno.</p>
+          </div>
+          <div class="mode-card">
+            <div class="mode-icon">&#10024;</div>
+            <h4>Izboljšaj</h4>
+            <p>Poglobi obstoječo vsebino. Doda citate, EU terminologijo, dokaze.</p>
+          </div>
+          <div class="mode-card">
+            <div class="mode-icon">&#128260;</div>
+            <h4>Regeneriraj</h4>
+            <p>Ustvari popolnoma novo vsebino od začetka. Zamenja obstoječe.</p>
+          </div>
+        </div>
+
+        <h3>5.2 AI Asistent na ravni polja <span class="badge badge-new">NOVO</span></h3>
+        <p>Vsako besedilno polje ima zdaj svoj <strong>gumb AI Asistenta</strong> (ikona &#10024;), ki se prikaže ob premiku miške nad polje, v zgornjem desnem kotu. Ta odpre kontekstualno okno:</p>
+        <ol class="step-list">
+          <li data-step="1"><strong>Vidite trenutno vsebino polja</strong></li>
+          <li data-step="2"><strong>Vnesete specifična navodila</strong> &mdash; povejte AI natančno, kaj želite (npr. "dodaj ISO reference", "napiši bolj formalno", "razširi s primeri iz Zahodnega Balkana")</li>
+          <li data-step="3"><strong>Generirajte / Regenerirajte</strong> &mdash; AI generira vsebino z vašimi navodili, kontekstom projekta, bazo znanja in vsemi pravili</li>
+          <li data-step="4"><strong>Predogled rezultata</strong> &mdash; preglejte pred sprejetjem</li>
+          <li data-step="5"><strong>Sprejmite ali regenerirajte</strong></li>
+        </ol>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Nasvet</div>
+          <p>AI Asistent na ravni polja je veliko močnejši od generiranja na ravni sekcije, ker daste natančna navodila za vsako polje. Uporabite <code>Ctrl+Enter</code> za hitro generiranje.</p>
+        </div>
+
+        <h3>5.3 Vsebina na podlagi dokazov in citati <span class="badge badge-new">NOVO</span></h3>
+        <table>
+          <thead><tr><th>Pravilo</th><th>Opis</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Obvezni empirični podatki</strong></td><td>Vsak analitični odstavek mora vsebovati vsaj eno preverjeno podatkovno točko z navedbo vira</td></tr>
+            <tr><td><strong>APA citiranje</strong></td><td>Priimki avtorjev, leto objave, vsaj 30% poimensko navedenih citatov</td></tr>
+            <tr><td><strong>Ničelne halucinacije</strong></td><td>AI-ju je prepovedano izmišljevati vire, URL-je, avtorje ali statistike</td></tr>
+            <tr><td><strong>Hierarhija virov</strong></td><td>Lokalni podatki najprej, nato Eurostat, OECD, EK, znanstvene publikacije</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ S6–S19: REMAINING SECTIONS ═══ -->
+    <!-- Beno, tukaj nadaljujem z ostalimi sekcijami po istem vzorcu EN+SI -->
+    <!-- Ker je odgovor že zelo dolg, dajem preostale sekcije v enakem format -->
+
+    <!-- S6: PROBLEM ANALYSIS -->
+    <div class="section-card" id="s6">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--red-500)"></span> 6. Problem Analysis</h2>
+        <p>This is the <strong>foundation</strong> of your entire project. Every cause must later be addressed by an activity, and every consequence must connect to an impact.</p>
+        <h3>6.1 Core Problem</h3>
+        <p>Enter a concise <strong>Title</strong> and a detailed <strong>Description</strong> with quantitative evidence. Even a few sentences are enough &mdash; AI will expand and enrich with citations from real sources (Eurostat, OECD, European Commission, etc.).</p>
+        <h3>6.2 Causes (minimum 4)</h3>
+        <p>Click <strong>"+ Add Cause"</strong> or let AI generate them. Ordered from root/structural causes first to proximate causes second.</p>
+        <h3>6.3 Consequences (minimum 4)</h3>
+        <p>Click <strong>"+ Add Consequence"</strong> or let AI generate them. Show the escalation chain: local &rarr; regional &rarr; national &rarr; EU-level.</p>
+        <h3>6.4 Inline Visualizations</h3>
+        <p>After generation, a <strong>"Generate visualizations"</strong> button appears below descriptions with empirical data. Creates charts (bar, gauge, donut) that visualize statistics mentioned in the text.</p>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--red-500)"></span> 6. Analiza problema</h2>
+        <p>To je <strong>temelj</strong> vašega celotnega projekta. Vsak vzrok mora biti pozneje obravnavan z aktivnostjo, vsaka posledica pa se mora povezati z vplivom.</p>
+        <h3>6.1 Osrednji problem</h3>
+        <p>Vnesite jedrnat <strong>Naslov</strong> in podroben <strong>Opis</strong> s kvantitativnimi dokazi. Tudi nekaj stavkov je dovolj &mdash; AI bo razširil in obogatil z citati.</p>
+        <h3>6.2 Vzroki (najmanj 4)</h3>
+        <p>Kliknite <strong>"+ Dodaj vzrok"</strong> ali pustite AI. Urejeni od korenskih/strukturnih najprej do neposrednih.</p>
+        <h3>6.3 Posledice (najmanj 4)</h3>
+        <p>Kliknite <strong>"+ Dodaj posledico"</strong> ali pustite AI. Verigo stopnjevanja: lokalni &rarr; regionalni &rarr; nacionalni &rarr; EU vpliv.</p>
+        <h3>6.4 Vrstične vizualizacije</h3>
+        <p>Po generiranju se prikaže gumb <strong>"Generiraj vizualizacije"</strong> za ustvarjanje grafov, ki vizualizirajo statistike v besedilu.</p>
+      </div>
+    </div>
+
+    <!-- S7: PROJECT IDEA -->
+    <div class="section-card" id="s7">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--orange-500)"></span> 7. Project Idea</h2>
+        <p>This chapter translates the problem analysis into a proposed intervention.</p>
+        <h3>7.1 Project Title &amp; Acronym</h3>
+        <p><strong>Title:</strong> Concise noun phrase (30&ndash;200 characters). No acronym, no verb. <strong>Acronym:</strong> 3&ndash;8 uppercase letters (e.g., GREENTRANS, DIGI-CRAFT).</p>
+        <h3>7.2 Main Aim</h3>
+        <p>One sentence starting with an infinitive verb capturing the project's core purpose.</p>
+        <h3>7.3 State of the Art</h3>
+        <p>AI references at least 3 real EU projects/studies, describing synergies and capitalisation.</p>
+        <h3>7.4 Proposed Solution</h3>
+        <p>Introductory overview, phase-by-phase breakdown, and mandatory DNSH compliance statement.</p>
+        <h3>7.5 EU Policies</h3>
+        <p>At least 3 relevant EU policies with verifiable references.</p>
+        <h3>7.6 Readiness Levels</h3>
+        <table>
+          <thead><tr><th>Level</th><th>Full Name</th><th>Measures</th></tr></thead>
+          <tbody>
+            <tr><td><strong>TRL</strong></td><td>Technology Readiness Level</td><td>Technology maturity</td></tr>
+            <tr><td><strong>SRL</strong></td><td>Societal Readiness Level</td><td>Social acceptance</td></tr>
+            <tr><td><strong>ORL</strong></td><td>Organisational Readiness Level</td><td>Institutional capacity</td></tr>
+            <tr><td><strong>LRL</strong></td><td>Legislative Readiness Level</td><td>Regulatory alignment</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--orange-500)"></span> 7. Projektna ideja</h2>
+        <p>To poglavje prevede analizo problema v predlagano intervencijo.</p>
+        <h3>7.1 Naslov in akronim</h3>
+        <p><strong>Naslov:</strong> Jedrnata imenska fraza (30&ndash;200 znakov). <strong>Akronim:</strong> 3&ndash;8 velikih črk.</p>
+        <h3>7.2 Glavni cilj</h3>
+        <p>En stavek z nedoločnikom, ki zajame bistvo projekta.</p>
+        <h3>7.3 Stanje tehnike</h3>
+        <p>AI navede vsaj 3 realne EU projekte/študije s sinergijami in kapitalizacijo.</p>
+        <h3>7.4 Predlagana rešitev</h3>
+        <p>Uvodni pregled, fazna razčlenitev in obvezna DNSH izjava.</p>
+        <h3>7.5 EU politike</h3>
+        <p>Vsaj 3 relevantne EU politike s preverljivimi referencami.</p>
+        <h3>7.6 Ravni pripravljenosti</h3>
+        <table>
+          <thead><tr><th>Raven</th><th>Polno ime</th><th>Meri</th></tr></thead>
+          <tbody>
+            <tr><td><strong>TRL</strong></td><td>Raven tehnološke pripravljenosti</td><td>Tehnološka zrelost</td></tr>
+            <tr><td><strong>SRL</strong></td><td>Raven družbene pripravljenosti</td><td>Družbeno sprejemanje</td></tr>
+            <tr><td><strong>ORL</strong></td><td>Raven organizacijske pripravljenosti</td><td>Institucionalna zmogljivost</td></tr>
+            <tr><td><strong>LRL</strong></td><td>Raven zakonodajne pripravljenosti</td><td>Regulativna usklajenost</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- S8: OBJECTIVES -->
+    <div class="section-card" id="s8">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--amber-500)"></span> 8. Objectives</h2>
+        <h3>8.1 General Objectives (3&ndash;5)</h3>
+        <p>Each starts with an <strong>infinitive verb</strong>, connects to broader EU goals. Title, description, KPI indicator.</p>
+        <h3>8.2 Specific Objectives (5&ndash;7)</h3>
+        <p>Follow <strong>S.M.A.R.T.</strong>: Specific, Measurable, Achievable, Relevant, Time-bound. Each has a measurable KPI with targets, baselines, timeframes.</p>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Example S.M.A.R.T. Indicator</div>
+          <p>"Increase pilot school completion rates from 82% to 93% by M24, verified by school records across 5 partner regions."</p>
+        </div>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--amber-500)"></span> 8. Cilji</h2>
+        <h3>8.1 Splošni cilji (3&ndash;5)</h3>
+        <p>Vsak se začne z <strong>nedoločnikom</strong>, se povezuje s širšimi cilji EU. Naslov, opis, KPI kazalnik.</p>
+        <h3>8.2 Specifični cilji (5&ndash;7)</h3>
+        <p>Sledijo metodi <strong>S.M.A.R.T.</strong>: Specifični, Merljivi, Dosegljivi, Relevantni, Časovno omejeni.</p>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Primer S.M.A.R.T. kazalnika</div>
+          <p>"Povečati delež pilotnih učencev, ki zaključijo šolsko leto, z 82% na 93% do M24, preverjeno z evidencami šolskih uprav v 5 regijah."</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- S9: ACTIVITIES -->
+    <div class="section-card" id="s9">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--lime-500)"></span> 9. Activities (Work Packages)</h2>
+        <p>The most complex section. AI generates the full work plan in two phases.</p>
+        <h3>9.1 Work Package Structure</h3>
+        <table>
+          <thead><tr><th>Position</th><th>WP Type</th><th>Duration</th></tr></thead>
+          <tbody>
+            <tr><td><strong>WP1</strong></td><td>Foundational / Analytical (incl. Capitalisation)</td><td>Specific phase</td></tr>
+            <tr><td><strong>WP2&ndash;WP(N-2)</strong></td><td>Content / Thematic WPs</td><td>Sequential with overlaps</td></tr>
+            <tr><td><strong>WP(N-1)</strong></td><td>Dissemination, Communication &amp; Exploitation</td><td>Full duration</td></tr>
+            <tr><td><strong>WP(N)</strong></td><td>Project Management &amp; Coordination</td><td>Full duration</td></tr>
+          </tbody>
+        </table>
+        <h3>9.2 Each WP Contains</h3>
+        <p><strong>Tasks (2&ndash;5)</strong> with dependencies (FS, SS, FF, SF). <strong>Milestones (1&ndash;2)</strong>. <strong>Deliverables (1&ndash;3)</strong> with binary verifiable indicators.</p>
+        <h3>9.3 Two-Phase Generation</h3>
+        <ol class="step-list">
+          <li data-step="1"><strong>Phase 1 &mdash; Scaffold:</strong> WP titles and date ranges</li>
+          <li data-step="2"><strong>Phase 2 &mdash; Detail:</strong> Each WP with tasks, milestones, deliverables, cross-WP dependencies</li>
+        </ol>
+        <p>Takes <strong>1&ndash;3 minutes</strong> for 6&ndash;10 WPs &mdash; this is normal.</p>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Temporal Integrity</div>
+          <p>Euro-Office enforces that NO task, milestone, or deliverable falls outside the project timeframe. Out-of-range dates are automatically corrected.</p>
+        </div>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--lime-500)"></span> 9. Aktivnosti (Delovni sklopi)</h2>
+        <p>Najkompleksnejša sekcija. AI generira celoten delovni načrt v dveh fazah.</p>
+        <h3>9.1 Struktura delovnih sklopov</h3>
+        <table>
+          <thead><tr><th>Pozicija</th><th>Tip DS</th><th>Trajanje</th></tr></thead>
+          <tbody>
+            <tr><td><strong>DS1</strong></td><td>Temeljni / Analitični (vklj. Kapitalizacija)</td><td>Specifična faza</td></tr>
+            <tr><td><strong>DS2&ndash;DS(N-2)</strong></td><td>Vsebinski / Tematski DS</td><td>Zaporedno s prekrivanjem</td></tr>
+            <tr><td><strong>DS(N-1)</strong></td><td>Razširjanje, komunikacija in izkoriščanje</td><td>Celotno trajanje</td></tr>
+            <tr><td><strong>DS(N)</strong></td><td>Vodenje projekta in koordinacija</td><td>Celotno trajanje</td></tr>
+          </tbody>
+        </table>
+        <h3>9.2 Dvofazno generiranje</h3>
+        <ol class="step-list">
+          <li data-step="1"><strong>Faza 1 &mdash; Ogrodje:</strong> Naslovi DS in časovni okviri</li>
+          <li data-step="2"><strong>Faza 2 &mdash; Podrobnosti:</strong> Vsak DS s polnimi nalogami, mejniki, rezultati</li>
+        </ol>
+        <p>Traja <strong>1&ndash;3 minute</strong> za 6&ndash;10 DS &mdash; to je normalno.</p>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Časovna celovitost</div>
+          <p>Euro-Office avtomatsko zagotavlja, da NOBENA naloga, mejnik ali rezultat ne pade izven datumov projekta.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- S10: PROJECT MANAGEMENT -->
+    <div class="section-card" id="s10">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--lime-500)"></span> 10. Project Management</h2>
+        <h3>10.1 Management Description</h3>
+        <p>AI generates a comprehensive narrative (500+ words) covering: governance structure, decision-making, quality assurance (Gender Equality Plans, AI Act/GDPR), risk management, communication tools, conflict resolution, FAIR data management.</p>
+        <h3>10.2 Organigram Labels</h3>
+        <table>
+          <thead><tr><th>Role</th><th>EU Abbr.</th><th>Label</th></tr></thead>
+          <tbody>
+            <tr><td>Coordinator</td><td>PK</td><td>"Project Coordinator (PK)"</td></tr>
+            <tr><td>Steering Committee</td><td>UO</td><td>"Steering Committee (UO)"</td></tr>
+            <tr><td>Advisory Board</td><td>SO</td><td>"Advisory Board (SO)"</td></tr>
+            <tr><td>WP Leaders</td><td>VDS</td><td>"WP Leaders (VDS)"</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--lime-500)"></span> 10. Vodenje projekta</h2>
+        <h3>10.1 Opis vodenja</h3>
+        <p>AI generira obsežno pripoved (500+ besed): struktura upravljanja, odločanje, zagotavljanje kakovosti, obvladovanje tveganj, komunikacija, FAIR podatki.</p>
+        <h3>10.2 Oznake za organigram</h3>
+        <table>
+          <thead><tr><th>Vloga</th><th>EU kratica</th><th>Oznaka</th></tr></thead>
+          <tbody>
+            <tr><td>Koordinator</td><td>PK</td><td>"Koordinator projekta (PK)"</td></tr>
+            <tr><td>Usmerjevalni odbor</td><td>UO</td><td>"Usmerjevalni odbor (UO)"</td></tr>
+            <tr><td>Svetovalni odbor</td><td>SO</td><td>"Svetovalni odbor (SO)"</td></tr>
+            <tr><td>Vodje DS</td><td>VDS</td><td>"Vodje DS (VDS)"</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- S11: RISK REGISTER -->
+    <div class="section-card" id="s11">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--lime-500)"></span> 11. Risk Register</h2>
+        <p>AI generates <strong>8&ndash;12 risks</strong> across four categories:</p>
+        <table>
+          <thead><tr><th>Category</th><th>Examples</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-blue">Technical</span></td><td>Technology failures, integration issues, data quality</td></tr>
+            <tr><td><span class="badge badge-green">Social</span></td><td>Stakeholder resistance, low engagement, cultural barriers</td></tr>
+            <tr><td><span class="badge badge-yellow">Economic</span></td><td>Budget overruns, market changes, partner instability</td></tr>
+            <tr><td><span class="badge badge-red">Environmental</span></td><td>Climate events, regulatory changes, environmental compliance</td></tr>
+          </tbody>
+        </table>
+        <p>Each risk: auto-generated ID, category, title, description, likelihood, impact, mitigation strategy.</p>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--lime-500)"></span> 11. Register tveganj</h2>
+        <p>AI generira <strong>8&ndash;12 tveganj</strong> v štirih kategorijah:</p>
+        <table>
+          <thead><tr><th>Kategorija</th><th>Primeri</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-blue">Tehnična</span></td><td>Tehnološke napake, integracijske težave, kakovost podatkov</td></tr>
+            <tr><td><span class="badge badge-green">Družbena</span></td><td>Odpor deležnikov, nizka vključenost, kulturne ovire</td></tr>
+            <tr><td><span class="badge badge-yellow">Ekonomska</span></td><td>Prekoračitve proračuna, tržne spremembe, nestabilnost partnerjev</td></tr>
+            <tr><td><span class="badge badge-red">Okoljska</span></td><td>Podnebni dogodki, regulativne spremembe, okoljska skladnost</td></tr>
+          </tbody>
+        </table>
+        <p>Vsako tveganje: ID, kategorija, naslov, opis, verjetnost, vpliv, strategija ublažitve.</p>
+      </div>
+    </div>
+
+    <!-- S12: EXPECTED RESULTS -->
+    <div class="section-card" id="s12">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:var(--cyan-500)"></span> 12. Expected Results &amp; KERs</h2>
+        <h3>12.1 Outputs (5&ndash;8)</h3>
+        <p>Direct, tangible deliverables with result-oriented titles and binary verifiable indicators.</p>
+        <h3>12.2 Outcomes (4&ndash;6)</h3>
+        <p>Medium-term changes with measurable indicators, targets, and measurement methods.</p>
+        <h3>12.3 Impacts (3&ndash;5)</h3>
+        <p>Long-term strategic shifts in Key Impact Pathways: Scientific, Societal, Economic.</p>
+        <h3>12.4 Key Exploitable Results (4&ndash;6)</h3>
+        <p>Assets with exploitation strategies covering 3 sustainability pillars: Financial, Institutional, Political/Regulatory.</p>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Composite Generation</div>
+          <p>Clicking <strong>Regenerate</strong> generates Outputs, Outcomes, Impacts, and Risks together for cross-reference consistency.</p>
+        </div>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:var(--cyan-500)"></span> 12. Pričakovani rezultati in KER-ji</h2>
+        <h3>12.1 Proizvodi (5&ndash;8)</h3>
+        <p>Neposredni rezultati z binarnimi preverljivimi kazalniki.</p>
+        <h3>12.2 Učinki (4&ndash;6)</h3>
+        <p>Srednjeročne spremembe z merljivimi kazalniki in cilji.</p>
+        <h3>12.3 Vplivi (3&ndash;5)</h3>
+        <p>Dolgoročni premiki v ključnih poteh vpliva: Znanstvena, Družbena, Ekonomska.</p>
+        <h3>12.4 Ključni izkoristljivi rezultati (4&ndash;6)</h3>
+        <p>Sredstva s strategijami izkoriščanja v 3 stebrih: Finančni, Institucionalni, Politični.</p>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Sestavljeno generiranje</div>
+          <p><strong>Regeneriraj</strong> generira Proizvode, Učinke, Vplive in Tveganja skupaj za medsebojno doslednost.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- S13: PARTNERSHIP -->
+    <div class="section-card" id="s13">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:#8B5CF6"></span> 13. Partnership (Consortium)</h2>
+        <table>
+          <thead><tr><th>Field</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Code</strong></td><td>CO (coordinator), P2, P3, P4, etc.</td></tr>
+            <tr><td><strong>Name</strong></td><td>Organisation TYPE description &mdash; never real names</td></tr>
+            <tr><td><strong>Partner Type</strong></td><td>Dropdown: faculty, researchInstitute, sme, publicAgency, ngo, etc.</td></tr>
+            <tr><td><strong>Expertise</strong></td><td>What this partner brings and which WPs they contribute to</td></tr>
+            <tr><td><strong>PM Rate</strong></td><td>Person-month cost rate in EUR (2,500&ndash;7,000)</td></tr>
+          </tbody>
+        </table>
+        <p>Click <strong>Regenerate</strong> for a balanced consortium. Click <strong>"+ Add Partner"</strong> to add manually.</p>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:#8B5CF6"></span> 13. Partnerstvo (Konzorcij)</h2>
+        <table>
+          <thead><tr><th>Polje</th><th>Opis</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Koda</strong></td><td>CO (koordinator), P2, P3, P4 itd.</td></tr>
+            <tr><td><strong>Ime</strong></td><td>Opis TIPA organizacije &mdash; nikoli pravih imen</td></tr>
+            <tr><td><strong>Tip partnerja</strong></td><td>Fakulteta, raziskovalni inštitut, MSP, javna agencija, NVO itd.</td></tr>
+            <tr><td><strong>Strokovno znanje</strong></td><td>Kaj partner prinaša in katerim DS prispeva</td></tr>
+            <tr><td><strong>PM stopnja</strong></td><td>Stroški osebnega meseca v EUR (2.500&ndash;7.000)</td></tr>
+          </tbody>
+        </table>
+        <p>Kliknite <strong>Regeneriraj</strong> za uravnotežen konzorcij. <strong>"+ Dodaj partnerja"</strong> za ročno dodajanje.</p>
+      </div>
+    </div>
+
+    <!-- S14: FINANCE -->
+    <div class="section-card" id="s14">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:#EC4899"></span> 14. Finance (Budget Allocation)</h2>
+        <h3>14.1 AI-Generated Allocations</h3>
+        <p>Click <strong>"Generate Partner Allocations with AI"</strong> to allocate partners to tasks with realistic hours, person-months (1 PM = 143 hours), and labour costs.</p>
+        <h3>14.2 EU Budget Rules</h3>
+        <table>
+          <thead><tr><th>Total Budget</th><th>Max % for PM WP</th></tr></thead>
+          <tbody>
+            <tr><td>up to 500,000 EUR</td><td>15%</td></tr>
+            <tr><td>500,001 &ndash; 1,000,000</td><td>10%</td></tr>
+            <tr><td>1,000,001 &ndash; 3,000,000</td><td>10%</td></tr>
+            <tr><td>3,000,001 &ndash; 5,000,000</td><td>7%</td></tr>
+            <tr><td>over 5,000,000</td><td>5&ndash;7%</td></tr>
+          </tbody>
+        </table>
+        <p>Dissemination WP &asymp; <strong>15%</strong>. Remaining budget distributed proportionally across content WPs. All values can be <strong>manually adjusted</strong> after generation.</p>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:#EC4899"></span> 14. Finance (Razdelitev proračuna)</h2>
+        <h3>14.1 AI razdelitev</h3>
+        <p>Kliknite <strong>"Generiraj razdelitve z AI"</strong> za razporeditev partnerjev na naloge z realističnimi urami, osebnimi meseci (1 OM = 143 ur) in stroški dela.</p>
+        <h3>14.2 EU proračunska pravila</h3>
+        <table>
+          <thead><tr><th>Celoten proračun</th><th>Maks % za DS Vodenje</th></tr></thead>
+          <tbody>
+            <tr><td>do 500.000 EUR</td><td>15%</td></tr>
+            <tr><td>500.001 &ndash; 1.000.000</td><td>10%</td></tr>
+            <tr><td>1.000.001 &ndash; 3.000.000</td><td>10%</td></tr>
+            <tr><td>3.000.001 &ndash; 5.000.000</td><td>7%</td></tr>
+            <tr><td>nad 5.000.000</td><td>5&ndash;7%</td></tr>
+          </tbody>
+        </table>
+        <p>DS Razširjanje &asymp; <strong>15%</strong>. Preostalo razporejeno proporcionalno. Vse vrednosti so <strong>ročno prilagodljive</strong>.</p>
+      </div>
+    </div>
+
+    <!-- S15: DASHBOARD -->
+    <div class="section-card" id="s15">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:#14B8A6"></span> 15. Dashboard Panel</h2>
+        <p>Click the <strong>Dashboard icon</strong> on the right side for a real-time visual overview. Auto-updates as you work.</p>
+        <table>
+          <thead><tr><th>Chart</th><th>Shows</th></tr></thead>
+          <tbody>
+            <tr><td>Project Completion</td><td>Percentage of sections filled</td></tr>
+            <tr><td>Problem Tree</td><td>Causes &rarr; Core Problem &rarr; Consequences</td></tr>
+            <tr><td>Objectives Hierarchy</td><td>General &rarr; Specific objectives</td></tr>
+            <tr><td>Partner Distribution</td><td>Donut chart of partner types</td></tr>
+            <tr><td>Budget per WP/Partner</td><td>Bar charts of costs</td></tr>
+            <tr><td>Person-Months/Hours</td><td>Resource distribution</td></tr>
+          </tbody>
+        </table>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Drag &amp; Drop</div>
+          <p>Dashboard cards can be <strong>reordered by drag-and-drop</strong>.</p>
+        </div>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:#14B8A6"></span> 15. Nadzorna plošča</h2>
+        <p>Kliknite <strong>ikono nadzorne plošče</strong> na desni za vizualni pregled v realnem času. Samodejno se posodablja.</p>
+        <table>
+          <thead><tr><th>Graf</th><th>Prikazuje</th></tr></thead>
+          <tbody>
+            <tr><td>Zaključenost projekta</td><td>Odstotek izpolnjenih sekcij</td></tr>
+            <tr><td>Drevo problemov</td><td>Vzroki &rarr; Problem &rarr; Posledice</td></tr>
+            <tr><td>Hierarhija ciljev</td><td>Splošni &rarr; Specifični cilji</td></tr>
+            <tr><td>Porazdelitev partnerjev</td><td>Kolobarni graf tipov</td></tr>
+            <tr><td>Proračun po DS/Partnerju</td><td>Stolpični grafi stroškov</td></tr>
+            <tr><td>Osebni meseci/Ure</td><td>Porazdelitev virov</td></tr>
+          </tbody>
+        </table>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Povleci in spusti</div>
+          <p>Kartice nadzorne plošče lahko <strong>prerazporedite z vlečenjem</strong>.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- S16: GANTT, PERT, ORGANIGRAM -->
+    <div class="section-card" id="s16">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:#0EA5E9"></span> 16. Gantt Chart, PERT Chart &amp; Organigram</h2>
+        <h3>16.1 Gantt Chart</h3>
+        <p>Visual timeline of all WPs and tasks. Colour-coded bars, milestone diamonds, dependency arrows.</p>
+        <h3>16.2 PERT Chart</h3>
+        <p>Network diagram showing task dependencies and critical path. Identifies bottlenecks.</p>
+        <h3>16.3 Organigram</h3>
+        <p>Organisational chart: Coordinator &rarr; Steering Committee &rarr; Advisory Board &rarr; WP Leaders.</p>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:#0EA5E9"></span> 16. Ganttov diagram, PERT diagram in organigram</h2>
+        <h3>16.1 Ganttov diagram</h3>
+        <p>Vizualna časovnica vseh DS in nalog z barvno kodiranimi trakovi, mejniki in puščicami odvisnosti.</p>
+        <h3>16.2 PERT diagram</h3>
+        <p>Mrežni diagram odvisnosti in kritične poti. Identificira ozka grla.</p>
+        <h3>16.3 Organigram</h3>
+        <p>Organizacijski graf: Koordinator &rarr; Usmerjevalni odbor &rarr; Svetovalni odbor &rarr; Vodje DS.</p>
+      </div>
+    </div>
+
+    <!-- S17: EXPORT & PRINT -->
+    <div class="section-card" id="s17">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:#64748B"></span> 17. Export &amp; Print</h2>
+        <h3>17.1 DOCX Export</h3>
+        <p>Click <strong>Export/Download</strong> &rarr; <strong>DOCX</strong> &rarr; professional Word document with all chapters, tables, headings.</p>
+        <h3>17.2 Print Layout</h3>
+        <p>Use <code>Ctrl+P</code> (or <code>Cmd+P</code>) for print-optimized layout with proper page breaks.</p>
+        <h3>17.3 Project Summary</h3>
+        <p>Click <strong>"Summary"</strong> for an AI-powered executive summary (max 800 words).</p>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:#64748B"></span> 17. Izvoz in tisk</h2>
+        <h3>17.1 DOCX izvoz</h3>
+        <p>Kliknite <strong>Izvoz/Prenos</strong> &rarr; <strong>DOCX</strong> &rarr; profesionalen Word dokument.</p>
+        <h3>17.2 Tisk</h3>
+        <p>Uporabite <code>Ctrl+P</code> (ali <code>Cmd+P</code>) za optimizirano postavitev za tisk.</p>
+        <h3>17.3 Povzetek projekta</h3>
+        <p>Kliknite <strong>"Povzetek"</strong> za AI generiran izvršni povzetek (maks. 800 besed).</p>
+      </div>
+    </div>
+
+    <!-- S18: ADMIN PANEL -->
+    <div class="section-card" id="s18">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:#F97316"></span> 18. Administration Panel</h2>
+        <p>Available to <strong>organisation administrators</strong> only.</p>
+        <table>
+          <thead><tr><th>Feature</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><strong>User Management</strong></td><td>View and manage users within your organisation</td></tr>
+            <tr><td><strong>Knowledge Base</strong></td><td>Upload PDFs/Word files as mandatory AI context</td></tr>
+            <tr><td><strong>AI Instructions Override</strong></td><td>Customize AI rules for any section</td></tr>
+            <tr><td><strong>Global Instructions</strong></td><td>Organisation-wide generation preferences</td></tr>
+            <tr><td><strong>2FA Management</strong></td><td>Configure Two-Factor Authentication</td></tr>
+            <tr><td><strong>Changelog</strong></td><td>View application version history with filtering <span class="badge badge-new">NEW</span></td></tr>
+          </tbody>
+        </table>
+        <h3>18.1 Knowledge Base</h3>
+        <ol class="step-list">
+          <li data-step="1">Go to Admin Panel &rarr; <strong>Knowledge Base</strong></li>
+          <li data-step="2">Click <strong>"Upload Document"</strong></li>
+          <li data-step="3">Select a PDF or Word file (call text, programme guide, policy document)</li>
+          <li data-step="4">The system extracts and stores text content</li>
+          <li data-step="5">AI will <strong>automatically consider</strong> these documents when generating content</li>
+        </ol>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Pro Tip</div>
+          <p>Upload the actual call text for your target funding programme. AI will align content with specific requirements, terminology, and evaluation criteria.</p>
+        </div>
+        <h3>18.2 AI Instructions Override</h3>
+        <p>Administrators can override: quality gates, task instructions, global rules, academic rigor, humanization rules. Click <strong>"Reset to defaults"</strong> to restore originals.</p>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:#F97316"></span> 18. Administracijska plošča</h2>
+        <p>Na voljo samo <strong>administratorjem organizacije</strong>.</p>
+        <table>
+          <thead><tr><th>Funkcija</th><th>Opis</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Upravljanje uporabnikov</strong></td><td>Pregled in upravljanje uporabnikov</td></tr>
+            <tr><td><strong>Baza znanja</strong></td><td>Nalaganje PDF/Word datotek kot obveznega AI konteksta</td></tr>
+            <tr><td><strong>Preglasitev AI navodil</strong></td><td>Prilagoditev AI pravil za katerokoli sekcijo</td></tr>
+            <tr><td><strong>Globalna navodila</strong></td><td>Nastavitve generiranja na ravni organizacije</td></tr>
+            <tr><td><strong>2FA upravljanje</strong></td><td>Konfiguracija dvostopenjske avtentikacije</td></tr>
+            <tr><td><strong>Dnevnik sprememb</strong></td><td>Pregled zgodovine verzij s filtriranjem <span class="badge badge-new">NOVO</span></td></tr>
+          </tbody>
+        </table>
+        <h3>18.1 Baza znanja</h3>
+        <ol class="step-list">
+          <li data-step="1">Pojdite v Administracijsko ploščo &rarr; <strong>Baza znanja</strong></li>
+          <li data-step="2">Kliknite <strong>"Naloži dokument"</strong></li>
+          <li data-step="3">Izberite PDF ali Word datoteko (besedilo razpisa, programski vodnik)</li>
+          <li data-step="4">Sistem izvleče in shrani besedilno vsebino</li>
+          <li data-step="5">AI bo <strong>avtomatsko upošteval</strong> te dokumente pri generiranju</li>
+        </ol>
+        <div class="tip-box">
+          <div class="tip-label">&#128161; Nasvet</div>
+          <p>Naložite dejansko besedilo razpisa. AI bo uskladil vsebino s specifičnimi zahtevami in merili.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- S19: TIPS & TROUBLESHOOTING -->
+    <div class="section-card" id="s19">
+      <div class="lang-en">
+        <h2><span class="section-dot" style="background:#22C55E"></span> 19. Tips &amp; Troubleshooting</h2>
+        <h3>19.1 Recommended Workflow</h3>
+        <div class="workflow-steps">
+          <div class="workflow-step"><div class="step-num">1</div><div class="step-content"><h4>Problem Analysis</h4><p>Write core problem &rarr; Regenerate &rarr; Review &rarr; Enhance &rarr; AI Assistant on fields</p></div></div>
+          <div class="workflow-step"><div class="step-num">2</div><div class="step-content"><h4>Project Idea</h4><p>Regenerate for title, acronym, state of the art, solution, policies, readiness</p></div></div>
+          <div class="workflow-step"><div class="step-num">3</div><div class="step-content"><h4>Objectives</h4><p>Generate general objectives, then specific S.M.A.R.T. objectives with KPIs</p></div></div>
+          <div class="workflow-step"><div class="step-num">4</div><div class="step-content"><h4>Activities</h4><p>Generate work packages (1&ndash;3 min) &rarr; Review dates and dependencies</p></div></div>
+          <div class="workflow-step"><div class="step-num">5</div><div class="step-content"><h4>PM &amp; Risks</h4><p>Generate management narrative and risk register</p></div></div>
+          <div class="workflow-step"><div class="step-num">6</div><div class="step-content"><h4>Results &amp; KERs</h4><p>Composite generation for consistent outputs, outcomes, impacts</p></div></div>
+          <div class="workflow-step"><div class="step-num">7</div><div class="step-content"><h4>Partnership</h4><p>Generate balanced consortium</p></div></div>
+          <div class="workflow-step"><div class="step-num">8</div><div class="step-content"><h4>Finance</h4><p>AI-allocate partners with realistic budgets</p></div></div>
+          <div class="workflow-step"><div class="step-num">9</div><div class="step-content"><h4>Review &amp; Export</h4><p>Enhance weak areas, generate summary, export to DOCX</p></div></div>
+        </div>
+
+        <h3>19.2 Common Issues</h3>
+        <table>
+          <thead><tr><th>Issue</th><th>Solution</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-red">Missing API key</span></td><td>Go to Settings (&#9881;) and enter your API key</td></tr>
+            <tr><td><span class="badge badge-yellow">Rate limit error</span></td><td>Wait 1&ndash;2 minutes and try again</td></tr>
+            <tr><td><span class="badge badge-blue">Generation takes long</span></td><td>Activities take 1&ndash;3 min for 6&ndash;10 WPs &mdash; normal</td></tr>
+            <tr><td><span class="badge badge-blue">Charts not appearing</span></td><td>Click "Generate visualizations" after content generation</td></tr>
+            <tr><td><span class="badge badge-red">Cannot login</span></td><td>Check email for confirmation link</td></tr>
+            <tr><td><span class="badge badge-yellow">Web search not working</span></td><td>Ensure checkbox is ON in Settings; only Gemini &amp; OpenRouter</td></tr>
+            <tr><td><span class="badge badge-purple">AI Assistant hidden</span></td><td>Hover over any text field &mdash; &#10024; button appears top-right</td></tr>
+          </tbody>
+        </table>
+
+        <h3>19.3 Keyboard Shortcuts</h3>
+        <table>
+          <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><code>Ctrl + P</code></td><td>Print / Print-optimized layout</td></tr>
+            <tr><td><code>Ctrl + Enter</code></td><td>Generate in AI Assistant popup <span class="badge badge-new">NEW</span></td></tr>
+            <tr><td><code>Esc</code></td><td>Close modals and popups</td></tr>
+            <tr><td><code>Tab</code></td><td>Move between form fields</td></tr>
+          </tbody>
+        </table>
+
+        <h3>19.4 Supported Browsers</h3>
+        <p><strong>Google Chrome</strong> (recommended), Mozilla Firefox, Microsoft Edge, Safari.</p>
+
+        <div class="success-box">
+          <div class="tip-label">&#10004; Your Data is Safe</div>
+          <p>All project data is stored securely in the cloud (Supabase). Your projects are accessible from any device and saved automatically. No manual saving required.</p>
+        </div>
+      </div>
+      <div class="lang-si">
+        <h2><span class="section-dot" style="background:#22C55E"></span> 19. Namigi in odpravljanje težav</h2>
+        <h3>19.1 Priporočen potek dela</h3>
+        <div class="workflow-steps">
+          <div class="workflow-step"><div class="step-num">1</div><div class="step-content"><h4>Analiza problema</h4><p>Napišite problem &rarr; Regeneriraj &rarr; Preglejte &rarr; Izboljšaj &rarr; AI Asistent na poljih</p></div></div>
+          <div class="workflow-step"><div class="step-num">2</div><div class="step-content"><h4>Projektna ideja</h4><p>Regeneriraj za naslov, akronim, stanje tehnike, rešitev, politike, pripravljenost</p></div></div>
+          <div class="workflow-step"><div class="step-num">3</div><div class="step-content"><h4>Cilji</h4><p>Generirajte splošne, nato specifične S.M.A.R.T. cilje s KPI-ji</p></div></div>
+          <div class="workflow-step"><div class="step-num">4</div><div class="step-content"><h4>Aktivnosti</h4><p>Generirajte DS (1&ndash;3 min) &rarr; Preglejte datume in odvisnosti</p></div></div>
+          <div class="workflow-step"><div class="step-num">5</div><div class="step-content"><h4>Vodenje in tveganja</h4><p>Generirajte pripoved vodenja in register tveganj</p></div></div>
+          <div class="workflow-step"><div class="step-num">6</div><div class="step-content"><h4>Rezultati in KER-ji</h4><p>Sestavljeno generiranje za doslednost</p></div></div>
+          <div class="workflow-step"><div class="step-num">7</div><div class="step-content"><h4>Partnerstvo</h4><p>Generirajte uravnotežen konzorcij</p></div></div>
+          <div class="workflow-step"><div class="step-num">8</div><div class="step-content"><h4>Finance</h4><p>AI razporedi partnerje z realističnimi proračuni</p></div></div>
+          <div class="workflow-step"><div class="step-num">9</div><div class="step-content"><h4>Pregled in izvoz</h4><p>Izboljšajte šibke sekcije, povzetek, izvoz v DOCX</p></div></div>
+        </div>
+
+        <h3>19.2 Pogoste težave</h3>
+        <table>
+          <thead><tr><th>Težava</th><th>Rešitev</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-red">Manjka API ključ</span></td><td>Pojdite v Nastavitve (&#9881;) in vnesite ključ</td></tr>
+            <tr><td><span class="badge badge-yellow">Omejitev zahtevkov</span></td><td>Počakajte 1&ndash;2 minuti</td></tr>
+            <tr><td><span class="badge badge-blue">Počasno generiranje</span></td><td>Aktivnosti trajajo 1&ndash;3 min za 6&ndash;10 DS &mdash; normalno</td></tr>
+            <tr><td><span class="badge badge-blue">Grafi manjkajo</span></td><td>Kliknite "Generiraj vizualizacije" po generiranju</td></tr>
+            <tr><td><span class="badge badge-red">Prijava ne deluje</span></td><td>Preverite e-pošto za potrditveno povezavo</td></tr>
+            <tr><td><span class="badge badge-yellow">Iskanje ne deluje</span></td><td>Preverite da je VKLOPLJENO; deluje samo z Gemini in OpenRouter</td></tr>
+            <tr><td><span class="badge badge-purple">AI Asistent skrit</span></td><td>Pomaknite miško nad polje &mdash; gumb &#10024; se prikaže zgoraj desno</td></tr>
+          </tbody>
+        </table>
+
+        <h3>19.3 Bližnjice</h3>
+        <table>
+          <thead><tr><th>Bližnjica</th><th>Dejanje</th></tr></thead>
+          <tbody>
+            <tr><td><code>Ctrl + P</code></td><td>Tiskanje</td></tr>
+            <tr><td><code>Ctrl + Enter</code></td><td>Generiranje v AI Asistentu <span class="badge badge-new">NOVO</span></td></tr>
+            <tr><td><code>Esc</code></td><td>Zapre okna</td></tr>
+            <tr><td><code>Tab</code></td><td>Premik med polji</td></tr>
+          </tbody>
+        </table>
+
+        <h3>19.4 Podprti brskalniki</h3>
+        <p><strong>Google Chrome</strong> (priporočeno), Mozilla Firefox, Microsoft Edge, Safari.</p>
+
+        <div class="success-box">
+          <div class="tip-label">&#10004; Vaši podatki so varni</div>
+          <p>Vsi projektni podatki so varno shranjeni v oblaku (Supabase). Dostopni z vsake naprave in se samodejno shranjujejo.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ FOOTER ═══ -->
+    <div style="text-align:center; padding:40px 0 20px; color:var(--text-muted); font-size:13px;">
+      <p><strong>Euro-Office</strong> &mdash; EU Intervention Logic AI Assistant</p>
+      <p style="margin-top:6px;">&copy; 2026 INFINITA d.o.o. &bull; <a href="#" onclick="return returnToApp()" style="color:var(--primary); text-decoration:none;">euro-office.net</a> &bull; <a href="mailto:beno.stern@infinita.si" style="color:var(--primary); text-decoration:none;">beno.stern@infinita.si</a></p>
+    </div>
+  </div><!-- /content-area -->
+</div><!-- /main-content -->
+
+<script>
+function returnToApp() {
+  // Try 1: If opened from app via window.open(), go back to opener
+  if (window.opener && !window.opener.closed) {
+    window.opener.focus();
+    window.close();
+    return false;
+  }
+  // Try 2: If there is browser history (came from app), go back
+  if (window.history.length > 1) {
+    window.history.back();
+    return false;
+  }
+  // Try 3: Fallback — navigate to app in same tab
+  window.location.href = 'https://euro-office.net';
+  return false;
+}
+function returnToApp() {
+  // Method 1: window.opener works when guide opened via window.open()
+  if (window.opener && !window.opener.closed) {
+    window.opener.focus();
+    window.close();
+    return false;
+  }
+  // Method 2: Navigate to app in same tab (replaces guide)
+  window.location.href = 'https://euro-office.net';
+  return false;
+}
+
+function switchLang(lang) {
+  document.body.classList.remove('lang-active-en', 'lang-active-si');
+  document.body.classList.add('lang-active-' + lang);
+  document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+  document.getElementById('btn-si').classList.toggle('active', lang === 'si');
+}
+
+function navigateTo(el, sectionId) {
+  document.querySelectorAll('.nav-item, .nav-sub-item').forEach(function(item) {
+    item.classList.remove('active');
+  });
+  el.classList.add('active');
+  var target = document.getElementById(sectionId);
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  document.querySelector('.sidebar').classList.remove('open');
+}
+
+// Highlight active nav item on scroll
+var sections = [];
+var navItems = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.section-card').forEach(function(card) {
+    sections.push(card);
+  });
+  document.querySelectorAll('.nav-item[href], .nav-sub-item[href]').forEach(function(item) {
+    var href = item.getAttribute('href');
+    if (href && href.startsWith('#')) {
+      navItems[href.substring(1)] = item;
+    }
+  });
+});
+
+var scrollTimeout;
+window.addEventListener('scroll', function() {
+  clearTimeout(scrollTimeout);
+  scrollTimeout = setTimeout(function() {
+    var scrollPos = window.scrollY + 120;
+    var currentSection = null;
+    for (var i = 0; i < sections.length; i++) {
+      if (sections[i].offsetTop <= scrollPos) {
+        currentSection = sections[i].id;
+      }
+    }
+    if (currentSection && navItems[currentSection]) {
+      document.querySelectorAll('.nav-item, .nav-sub-item').forEach(function(item) {
+        item.classList.remove('active');
+      });
+      navItems[currentSection].classList.add('active');
+    }
+  }, 50);
+});
+</script>
+
+</body>
+</html>
