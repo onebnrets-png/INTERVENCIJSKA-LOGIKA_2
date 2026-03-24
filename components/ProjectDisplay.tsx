@@ -2218,7 +2218,6 @@ const ProjectDisplay = (props) => {
                                 onEditReference={props.onEditReference || (() => {})}
                                 onDeleteReference={props.onDeleteReference || (() => {})}
                                 onOpenAddModal={props.onOpenAddModal || (() => {})}
-                                {/* EO-147d: onCollectFromSection removed */}
                                 onInjectReferences={props.onInjectReferences}
                                 language={language}
                                 referencesEnabled={
