@@ -1,6 +1,7 @@
 // App.tsx
 // ═══════════════════════════════════════════════════════════════
 // Main application shell — orchestration only.
+// v5.8.5 — 2026-03-24 — EO-148: Auto-repair broken reference URLs via Google Search grounding + Scholar fallback
 // v5.8.4 — 2026-03-24 — EO-147e: Fix race condition — pass cleanedRefs directly
 // v5.8.3 — 2026-03-24 — EO-147d: Unified reference button, pre-inject cleanup, removed handleCollectFromSection
 // v5.8.2 — 2026-03-24 — EO-147c: Fix storageService not defined crash
@@ -480,6 +481,42 @@ const App = () => {
         } catch (verErr: any) {
           console.warn('[EO-147b] URL verification failed (non-fatal):', verErr?.message);
         }
+
+        // ── EO-148: Repair broken URLs ─────────────────────────────────
+        const brokenRefs = (pm.projectData?.references || []).filter(
+          (r: any) => r.verificationStatus === 'broken' || r.urlVerified === false
+        );
+
+        if (brokenRefs.length > 0) {
+          console.log(`[EO-148] Found ${brokenRefs.length} broken refs — starting repair...`);
+
+          try {
+            const { repairBrokenReferenceUrls } = await import('./hooks/useGeneration');
+            const repairedRefs = await repairBrokenReferenceUrls(brokenRefs, language);
+
+            pm.setProjectData((prev: any) => {
+              const refs = [...(prev.references || [])];
+              for (const repaired of repairedRefs) {
+                const idx = refs.findIndex(
+                  (r: any) => r.inlineMarker === repaired.inlineMarker && r.sectionKey === repaired.sectionKey
+                );
+                if (idx !== -1) {
+                  refs[idx] = { ...refs[idx], ...repaired };
+                }
+              }
+              console.log(`[EO-148] Repaired refs merged. Total refs: ${refs.length}`);
+              return { ...prev, references: refs };
+            });
+
+            const groundingFixed = repairedRefs.filter((r: any) => r.verificationMethod === 'google-search-grounding').length;
+            const scholarFixed = repairedRefs.filter((r: any) => r.verificationMethod === 'google-scholar-fallback').length;
+            console.log(`[EO-148] Repair complete: ${groundingFixed} via grounding, ${scholarFixed} via Scholar`);
+
+          } catch (err) {
+            console.warn('[EO-148] Repair failed (non-fatal):', err);
+          }
+        }
+        // ── /EO-148 ────────────────────────────────────────────────────
       }
 
       generation.setError(language === 'si'
