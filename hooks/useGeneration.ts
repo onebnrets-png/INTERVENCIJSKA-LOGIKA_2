@@ -6039,4 +6039,104 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
   };
 };
 
-// END OF useGeneration.ts v7.60
+
+// ── EO-148: Repair broken reference URLs via Google Search grounding + Scholar fallback ──
+
+/**
+ * EO-148: Repair broken reference URLs using Google Search grounding + Scholar fallback
+ * @param brokenRefs - array of references with verificationStatus === 'broken'
+ * @param language - 'si' | 'en'
+ * @returns array of repaired references with updated URL fields
+ */
+export async function repairBrokenReferenceUrls(
+  brokenRefs: Reference[],
+  language: string
+): Promise<Reference[]> {
+  const { generateContent } = await import('../services/aiProvider.ts');
+  const { verifyReferencesBatch } = await import('../services/referenceVerificationService.ts');
+
+  console.log(`[EO-148] Repairing ${brokenRefs.length} broken refs...`);
+
+  const repaired: Reference[] = [];
+
+  // Sequential (not parallel) — rate limit protection per spec
+  for (const ref of brokenRefs) {
+    const prompt =
+      `Find the exact, real, working URL for this academic/policy reference:\n` +
+      `- Title: "${ref.title}"\n` +
+      `- Author: "${ref.author}"\n` +
+      `- Year: "${ref.year}"\n` +
+      `- DOI: "${ref.doi || 'unknown'}"\n\n` +
+      `Return ONLY a JSON object: { "url": "https://...", "doi": "..." }\n` +
+      `If you cannot find the exact document, return { "url": null, "doi": null }`;
+
+    let repairedRef: Reference = { ...ref };
+    let groundingSucceeded = false;
+
+    try {
+      const result = await generateContent({
+        prompt,
+        sectionKey: 'referenceRepair',
+        forceGoogleSearch: true,
+        temperature: 0.1,
+      });
+
+      let parsed: { url: string | null; doi: string | null } | null = null;
+      try {
+        const clean = (result.text || '').replace(/```json|```/g, '').trim();
+        parsed = JSON.parse(clean);
+      } catch {
+        // unparseable — fall through to Scholar fallback
+      }
+
+      if (parsed?.url) {
+        console.log(`[EO-148] "${ref.title}" → Google Search grounding → FOUND: ${parsed.url}`);
+        const verResults = await verifyReferencesBatch([{ ...ref, url: parsed.url }]);
+        const vr = verResults?.[0];
+        if (vr?.urlVerified) {
+          repairedRef = {
+            ...repairedRef,
+            url: parsed.url,
+            urlVerified: true,
+            verificationStatus: 'verified',
+            verificationMethod: 'google-search-grounding',
+            resolvedUrl: vr.resolvedUrl || parsed.url,
+            ...(parsed.doi ? { doi: parsed.doi } : {}),
+          };
+          groundingSucceeded = true;
+        } else {
+          console.log(`[EO-148] "${ref.title}" → Google Search grounding → URL not verified → Scholar fallback`);
+        }
+      } else {
+        console.log(`[EO-148] "${ref.title}" → Google Search grounding → NOT FOUND → Scholar fallback`);
+      }
+    } catch (err) {
+      console.warn(`[EO-148] Grounding call failed for "${ref.title}":`, err);
+    }
+
+    if (!groundingSucceeded) {
+      // Google Scholar fallback — always produces a working search link
+      const scholarQuery = encodeURIComponent(`${ref.author || ''} ${ref.title || ''} ${ref.year || ''}`);
+      repairedRef = {
+        ...repairedRef,
+        url: `https://scholar.google.com/scholar?q=${scholarQuery}`,
+        urlVerified: true,
+        verificationStatus: 'scholar-fallback',
+        verificationMethod: 'google-scholar-fallback',
+        resolvedUrl: `https://scholar.google.com/scholar?q=${scholarQuery}`,
+      };
+    }
+
+    repaired.push(repairedRef);
+  }
+
+  const groundingFixed = repaired.filter(r => r.verificationMethod === 'google-search-grounding').length;
+  const scholarFixed = repaired.filter(r => r.verificationMethod === 'google-scholar-fallback').length;
+  console.log(`[EO-148] Repair complete: ${groundingFixed} fixed via grounding, ${scholarFixed} via Scholar fallback`);
+
+  return repaired;
+}
+
+// ── /EO-148 ──────────────────────────────────────────────────────────────────
+
+// END OF useGeneration.ts v7.67
