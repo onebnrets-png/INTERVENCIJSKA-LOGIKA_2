@@ -1,6 +1,8 @@
 // App.tsx
 // ═══════════════════════════════════════════════════════════════
 // Main application shell — orchestration only.
+// v5.8.4 — 2026-03-24 — EO-147e: Fix race condition — pass cleanedRefs directly
+// v5.8.3 — 2026-03-24 — EO-147d: Unified reference button, pre-inject cleanup, removed handleCollectFromSection
 // v5.8.2 — 2026-03-24 — EO-147c: Fix storageService not defined crash
 // v5.8.1 — 2026-03-24 — EO-147b: URL verification after inject references
 // v5.8 — 2026-03-23 — EO-147: Retroactive Reference Injection
@@ -70,7 +72,7 @@ import { useAuth } from './hooks/useAuth.ts';
 import { useProjectManager } from './hooks/useProjectManager.ts';
 import { useTranslation } from './hooks/useTranslation.ts';
 import { useGeneration } from './hooks/useGeneration.ts';
-import { collectReferencesFromSection, collectReferencesFromText, enrichReferencesWithAI, injectReferencesToText } from './hooks/useGeneration.ts';
+import { collectReferencesFromText, enrichReferencesWithAI, injectReferencesToText } from './hooks/useGeneration.ts'; // EO-147d: removed collectReferencesFromSection
 import { useResponsive } from './hooks/useResponsive.ts'; // EO-140
  
 type ColorScheme = typeof lightColors | typeof darkColors;
@@ -419,90 +421,37 @@ const App = () => {
   const [isGeneratingRefs, setIsGeneratingRefs] = useState(false);
   const [unverifiedClaims, setUnverifiedClaims] = useState<any[]>([]);
 
-  // EO-146: Inline chapter prefix helper (module-private _getChapterPrefix not exported)
-  const _getChapterPrefixForCollect = (sectionKey: string): string => {
-    const map: Record<string, string> = {
-      problemAnalysis: 'PA', projectIdea: 'PI', generalObjectives: 'GO',
-      specificObjectives: 'SO', projectManagement: 'PM', partners: 'PT',
-      activities: 'AC', risks: 'RS', outputs: 'ER', outcomes: 'ER',
-      impacts: 'ER', kers: 'ER', methodology: 'ME', dissemination: 'DI',
-    };
-    return map[sectionKey] || sectionKey.substring(0, 2).toUpperCase();
-  };
-
-  const handleCollectFromSection = async (sectionKey: string) => {
-    const sectionData = pm.projectData[sectionKey] || (pm.projectData.projectIdea && pm.projectData.projectIdea[sectionKey]);
-    if (!sectionData) return;
-    const newRefs = collectReferencesFromSection(sectionKey, sectionData);
-    if (newRefs.length === 0) {
-      generation.setError(language === 'si' ? 'V besedilu ni najdenih citatov.' : 'No citations found in text.');
-      setTimeout(() => generation.setError(null), 3000);
-      return;
-    }
-    const currentRefs = Array.isArray(pm.projectData.references) ? pm.projectData.references : [];
-    const deduped = newRefs.filter((nr: any) => !currentRefs.some((cr: any) => cr.authors === nr.authors && String(cr.year) === String(nr.year)));
-    if (deduped.length === 0) {
-      generation.setError(language === 'si' ? 'Vsi citati so že dodani.' : 'All citations already added.');
-      setTimeout(() => generation.setError(null), 3000);
-      return;
-    }
-
-    generation.setIsLoading(language === 'si' ? 'Obogatitev virov z AI...' : 'Enriching references with AI...');
-    try {
-      const enriched = await enrichReferencesWithAI(deduped, pm.projectData, language);
-
-      // EO-146: Assign chapterPrefix and prefixed inlineMarker to each reference
-      const chapterPrefix = _getChapterPrefixForCollect(sectionKey);
-      const existingChapterRefs = currentRefs.filter((r: any) => r.chapterPrefix === chapterPrefix);
-      let nextNum = existingChapterRefs.length + 1;
-
-      enriched.forEach((ref: any) => {
-        ref.sectionKey = sectionKey;
-        ref.chapterPrefix = chapterPrefix;
-        ref.inlineMarker = '[' + chapterPrefix + '-' + nextNum + ']';
-        nextNum++;
-      });
-
-      const merged = [...currentRefs, ...enriched];
-      pm.handleUpdateData(['references'], merged);
-
-      generation.setError(language === 'si' ? enriched.length + ' novih virov dodanih z označbami [' + chapterPrefix + '-N].' : enriched.length + ' new references added with markers [' + chapterPrefix + '-N].');
-      setTimeout(() => generation.setError(null), 3000);
-    } catch (e: any) {
-      // Fallback: add without enrichment but WITH markers
-      const chapterPrefix = _getChapterPrefixForCollect(sectionKey);
-      const existingChapterRefs = currentRefs.filter((r: any) => r.chapterPrefix === chapterPrefix);
-      let nextNum = existingChapterRefs.length + 1;
-
-      deduped.forEach((ref: any) => {
-        ref.sectionKey = sectionKey;
-        ref.chapterPrefix = chapterPrefix;
-        ref.inlineMarker = '[' + chapterPrefix + '-' + nextNum + ']';
-        nextNum++;
-      });
-
-      pm.handleUpdateData(['references'], [...currentRefs, ...deduped]);
-      generation.setError(language === 'si' ? deduped.length + ' novih virov dodanih.' : deduped.length + ' new references added.');
-      setTimeout(() => generation.setError(null), 3000);
-    } finally {
-      generation.setIsLoading(false);
-    }
-  };
-
-  // EO-147: Retroactive Reference Injection — add citations to text that has none
+  // EO-147d: handleCollectFromSection removed — replaced by unified handleInjectReferencesToSection
+  // EO-147d: _getChapterPrefixForCollect removed — no longer needed
+  // EO-147: Retroactive Reference Injection / unified button — add/refresh citations in text
+  // EO-147e: Race condition fix — calculate cleanedRefs locally, pass directly to injectReferencesToText
   const handleInjectReferencesToSection = async (sectionKey: string) => {
+    // EO-147e: Local cleanup — no setProjectData + await needed, avoids React state race condition
+    const currentRefs = Array.isArray(pm.projectData?.references) ? pm.projectData.references : [];
+    const cleanedRefs = currentRefs.filter((ref: any) => !ref.sectionKey || ref.sectionKey !== sectionKey);
+    const removedCount = currentRefs.length - cleanedRefs.length;
+    if (removedCount > 0) {
+      console.log('[EO-147e] Pre-inject cleanup: removed ' + removedCount + ' old refs for "' + sectionKey + '" (local, no setState race)');
+    }
+
     const sectionData = pm.projectData[sectionKey] || (pm.projectData.projectIdea && pm.projectData.projectIdea[sectionKey]);
     if (!sectionData) return;
     generation.setIsLoading(language === 'si' ? 'Dodajam reference k besedilu...' : 'Adding references to text...');
     try {
-      const { updatedSectionData, newRefs } = await injectReferencesToText(sectionKey, sectionData, pm.projectData, language);
-      const currentRefs = Array.isArray(pm.projectData.references) ? pm.projectData.references : [];
-      pm.handleUpdateData([sectionKey], updatedSectionData);
-      if (newRefs.length > 0) {
-        pm.handleUpdateData(['references'], [...currentRefs, ...newRefs]);
-      }
+      // EO-147e: Pass cleanedRefs directly — pipeline sees correct starting state immediately
+      const { updatedSectionData, newRefs } = await injectReferencesToText(
+        sectionKey, sectionData, pm.projectData, language, cleanedRefs
+      );
 
-      // EO-147b: Trigger URL verification for injected references (fire-and-forget)
+      // EO-147e: Merge cleanedRefs + newRefs atomically — never duplicates
+      const finalRefs = [...cleanedRefs, ...newRefs];
+      pm.setProjectData((prev: any) => ({
+        ...prev,
+        [sectionKey]: updatedSectionData,
+        references: finalRefs,
+      }));
+
+      // EO-147b: URL verification for injected references (fire-and-forget)
       if (newRefs.length > 0) {
         try {
           const { verifyReferencesBatch } = await import('./services/referenceVerificationService.ts');
@@ -524,9 +473,8 @@ const App = () => {
                   resolvedUrl: match.resolvedUrl,
                 };
               });
-              const updated = { ...prev, references: updatedRefs };
-              // EO-147c: Removed storageService.saveProject — auto-save handles persistence
-              return updated;
+              // EO-147c: auto-save handles persistence
+              return { ...prev, references: updatedRefs };
             });
           }
         } catch (verErr: any) {
@@ -1037,8 +985,7 @@ const App = () => {
                   onEditReference={handleEditReference}
                   onDeleteReference={handleDeleteReference}
                   onOpenAddModal={handleOpenAddRefModal}
-                  onCollectFromSection={handleCollectFromSection}
-                  onInjectReferences={handleInjectReferencesToSection}
+                  onInjectReferences={handleInjectReferencesToSection}  {/* EO-147d: onCollectFromSection removed */}
                   generationProgress={generation.generationProgress}
               />
               )}
