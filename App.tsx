@@ -985,7 +985,7 @@ const App = () => {
                   onEditReference={handleEditReference}
                   onDeleteReference={handleDeleteReference}
                   onOpenAddModal={handleOpenAddRefModal}
-                  onInjectReferences={handleInjectReferencesToSection}  {/* EO-147d: onCollectFromSection removed */}
+                  onInjectReferences={handleInjectReferencesToSection}
                   generationProgress={generation.generationProgress}
               />
               )}
