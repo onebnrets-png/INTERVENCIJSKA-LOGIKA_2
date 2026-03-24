@@ -1,8 +1,11 @@
 // services/aiProvider.ts
 // ═══════════════════════════════════════════════════════════════
-// Universal AI Provider Abstraction Layer – v6.11 (2026-03-16)
+// Universal AI Provider Abstraction Layer – v6.21 (2026-03-24)
 // ═══════════════════════════════════════════════════════════════ 
 // CHANGELOG:
+// v6.21 — 2026-03-24 — EO-148: Added forceGoogleSearch?: boolean to AIGenerateOptions.
+//         Allows standalone repair calls (repairBrokenReferenceUrls) to force google_search
+//         grounding without relying on storageService.getWebSearchEnabled() or sectionKey eligibility.
 // v6.20 — 2026-03-20 — EO-138: Extract _usage (token counts) from all provider responses.
 //         AIGenerateResult now includes optional _usage field with provider/model/inputTokens/outputTokens/totalTokens.
 // v6.19 — 2026-03-20 — EO-135: Universal google_search + JSON mode guard. Auto-disables google_search when
@@ -333,6 +336,7 @@ export interface AIGenerateOptions {
   sectionKey?: string;
   taskType?: AITaskType;
   signal?: AbortSignal;
+  forceGoogleSearch?: boolean;  // EO-148: force google_search grounding regardless of sectionKey/user setting
 }
 
 export interface AIGenerateResult {
@@ -797,7 +801,9 @@ if (options.temperature !== undefined) {
 generateConfig.maxOutputTokens = getMaxTokensForSection(options.sectionKey);
 
   var geminiPrompt = options.prompt;
-  if (storageService.getWebSearchEnabled() && isWebSearchEligible(options.sectionKey)) {
+  // EO-148: forceGoogleSearch bypasses storageService/sectionKey eligibility for repair calls
+  const googleSearchRequested = options.forceGoogleSearch || (storageService.getWebSearchEnabled() && isWebSearchEligible(options.sectionKey));
+  if (googleSearchRequested) {
     // EO-135: Universal guard — google_search is incompatible with responseMimeType:'application/json' or responseSchema.
     // Gemini returns HTTP 400 if both are set. Auto-disable google_search when JSON mode is active.
     if (generateConfig.responseMimeType === 'application/json' || generateConfig.responseSchema) {
@@ -805,7 +811,11 @@ generateConfig.maxOutputTokens = getMaxTokensForSection(options.sectionKey);
     } else {
       generateConfig.tools = [{ googleSearch: {} }];
       geminiPrompt = WEB_SEARCH_ENFORCEMENT_PROMPT + '\n\n' + options.prompt;
-      console.log('[aiProvider] v5.8 Gemini google_search ENABLED for section: ' + (options.sectionKey || 'unknown'));
+      if (options.forceGoogleSearch) {
+        console.log('[EO-148] aiProvider: google_search grounding FORCED for reference repair');
+      } else {
+        console.log('[aiProvider] v5.8 Gemini google_search ENABLED for section: ' + (options.sectionKey || 'unknown'));
+      }
     }
   }
 
