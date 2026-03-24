@@ -1,6 +1,7 @@
 // App.tsx
 // ═══════════════════════════════════════════════════════════════
 // Main application shell — orchestration only.
+// v5.8.2 — 2026-03-24 — EO-147c: Fix storageService not defined crash
 // v5.8.1 — 2026-03-24 — EO-147b: URL verification after inject references
 // v5.8 — 2026-03-23 — EO-147: Retroactive Reference Injection
 // v5.7 — 2026-03-23 — EO-146: Fix collectFromSection — prefixed markers, URL verification
@@ -524,9 +525,7 @@ const App = () => {
                 };
               });
               const updated = { ...prev, references: updatedRefs };
-              if (pm.currentProjectId) {
-                storageService.saveProject(updated, language, pm.currentProjectId);
-              }
+              // EO-147c: Removed storageService.saveProject — auto-save handles persistence
               return updated;
             });
           }
