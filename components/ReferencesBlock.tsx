@@ -1,5 +1,7 @@
 // components/ReferencesBlock.tsx
 // ═══════════════════════════════════════════════════════════════
+// v1.14 — 2026-03-24 — EO-150c: Display full prefixed marker [ER-1] instead of stripped [1].
+// v1.13 — 2026-03-24 — EO-147d: Unified single reference button
 // v1.11 — 2026-03-23 — EO-141: normalizeMarker handles [XX-N] prefix format ([PA-1],[PI-2]).
 // v1.10 — 2026-03-20 — EO-130f: Default referencesEnabled changed from true to false (safe default).
 // v1.9 — 2026-03-18 — EO-130: referencesEnabled prop — hides block when references toggled OFF for section.
@@ -270,7 +272,10 @@ const ReferencesBlock: React.FC<ReferencesBlockProps> = ({
           ) : (
             sectionRefs.map((ref, idx) => {
               const markerNumber = normalizeMarker(ref.inlineMarker);
-              const displayMarker = markerNumber !== null ? `[${markerNumber}]` : `[${idx + 1}]`;
+              // EO-150c: Show full prefixed marker [ER-1] instead of just [1]
+              const displayMarker = (ref.inlineMarker && /^\[([A-Z]{2,3})-\d+\]$/.test(ref.inlineMarker.trim()))
+                ? ref.inlineMarker.trim()
+                : (markerNumber !== null ? `[${markerNumber}]` : `[${idx + 1}]`);
 
               return (
                 <div
@@ -562,4 +567,4 @@ const ReferencesBlock: React.FC<ReferencesBlockProps> = ({
 
 export default ReferencesBlock;
 
-// END OF ReferencesBlock.tsx v1.13 — EO-147d: Unified single reference button
+// END OF ReferencesBlock.tsx v1.14 — EO-150c: Full prefix display
