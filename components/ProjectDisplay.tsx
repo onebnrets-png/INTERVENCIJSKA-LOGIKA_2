@@ -1,5 +1,8 @@
 // components/ProjectDisplay.tsx
 // ═══════════════════════════════════════════════════════════════
+// v7.36 — 2026-03-24 — EO-153c: Fixed renderGenericResults + renderObjectives refsEnabled lookup.
+//         Was using raw sectionKey (outputs/outcomes/impacts/generalObjectives/specificObjectives)
+//         instead of getChapterForSection() — toggle was ignored for these sections.
 // v7.35 — 2026-03-24 — EO-153b: Unified refsEnabled in ALL remaining renderers.
 //         renderProblemAnalysis, renderProjectIdea, renderKERs, renderRisks,
 //         renderProjectManagement, renderActivities — all now use getChapterForSection()
@@ -932,8 +935,9 @@ const renderGenericResults = (props, sectionKey) => {
     const prefix = getPrefix(sectionKey);
     // ★ EO-081: references for citation preview
     const refs = Array.isArray(projectData.references) ? projectData.references : [];
-    // EO-145: read refs toggle for this chapter
-    const refsEnabled = projectData?._settings?.referencesEnabled?.[sectionKey] ?? DEFAULT_REFS_ENABLED[sectionKey] ?? false;
+    // EO-153c: Use chapter key — outputs/outcomes/impacts inherit from expectedResults
+    const _chapterKeyForRefs = getChapterForSection(sectionKey);
+    const refsEnabled = projectData?._settings?.referencesEnabled?.[_chapterKeyForRefs] ?? DEFAULT_REFS_ENABLED[_chapterKeyForRefs] ?? false;
 
     return (
         <div id={sectionKey} className="mt-8">
@@ -961,8 +965,9 @@ const renderObjectives = (props, sectionKey) => {
     const prefix = sectionKey === 'generalObjectives' ? 'GO' : 'SO';
     // ★ EO-081: references for citation preview
     const refs = Array.isArray(projectData.references) ? projectData.references : [];
-    // EO-145: read refs toggle for this chapter
-    const refsEnabled = projectData?._settings?.referencesEnabled?.[sectionKey] ?? DEFAULT_REFS_ENABLED[sectionKey] ?? false;
+    // EO-153c: Use chapter key — consistent with all other renderers
+    const _chapterKeyForRefs = getChapterForSection(sectionKey);
+    const refsEnabled = projectData?._settings?.referencesEnabled?.[_chapterKeyForRefs] ?? DEFAULT_REFS_ENABLED[_chapterKeyForRefs] ?? false;
     
     return (
         <div className="mt-2">
@@ -2261,4 +2266,4 @@ const ProjectDisplay = (props) => {
 
 export default ProjectDisplay;
 
-// END OF ProjectDisplay.tsx v7.35
+// END OF ProjectDisplay.tsx v7.36
