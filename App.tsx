@@ -1,6 +1,7 @@
 // App.tsx
 // ═══════════════════════════════════════════════════════════════
 // Main application shell — orchestration only.
+// v5.8.1 — 2026-03-24 — EO-147b: URL verification after inject references
 // v5.8 — 2026-03-23 — EO-147: Retroactive Reference Injection
 // v5.7 — 2026-03-23 — EO-146: Fix collectFromSection — prefixed markers, URL verification
 // v5.6 — 2026-03-22 — EO-140: Responsive toolbar via useResponsive hook.
@@ -499,6 +500,41 @@ const App = () => {
       if (newRefs.length > 0) {
         pm.handleUpdateData(['references'], [...currentRefs, ...newRefs]);
       }
+
+      // EO-147b: Trigger URL verification for injected references (fire-and-forget)
+      if (newRefs.length > 0) {
+        try {
+          const { verifyReferencesBatch } = await import('./services/referenceVerificationService.ts');
+          console.log('[EO-147b] Starting URL verification for ' + newRefs.length + ' injected refs...');
+          const verResults = await verifyReferencesBatch(newRefs);
+          if (verResults && verResults.length > 0) {
+            const verifiedCount = verResults.filter((v: any) => v.urlVerified).length;
+            const brokenCount = verResults.filter((v: any) => !v.urlVerified).length;
+            console.log('[EO-147b] URL verification: ' + verifiedCount + ' verified, ' + brokenCount + ' broken');
+            pm.setProjectData((prev: any) => {
+              const updatedRefs = (prev.references || []).map((ref: any) => {
+                const match = verResults.find((vr: any) => vr.id === ref.id);
+                if (!match) return ref;
+                return {
+                  ...ref,
+                  urlVerified: match.urlVerified,
+                  verificationStatus: match.verificationStatus,
+                  verificationMethod: match.verificationMethod,
+                  resolvedUrl: match.resolvedUrl,
+                };
+              });
+              const updated = { ...prev, references: updatedRefs };
+              if (pm.currentProjectId) {
+                storageService.saveProject(updated, language, pm.currentProjectId);
+              }
+              return updated;
+            });
+          }
+        } catch (verErr: any) {
+          console.warn('[EO-147b] URL verification failed (non-fatal):', verErr?.message);
+        }
+      }
+
       generation.setError(language === 'si'
         ? newRefs.length + ' referenc dodanih k besedilu.'
         : newRefs.length + ' references injected into text.');
