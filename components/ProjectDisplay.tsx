@@ -2218,8 +2218,7 @@ const ProjectDisplay = (props) => {
                                 onEditReference={props.onEditReference || (() => {})}
                                 onDeleteReference={props.onDeleteReference || (() => {})}
                                 onOpenAddModal={props.onOpenAddModal || (() => {})}
-                                onCollectFromSection={props.onCollectFromSection}
-                                onInjectReferences={props.onInjectReferences}
+                                onInjectReferences={props.onInjectReferences}  {/* EO-147d: onCollectFromSection removed */}
                                 language={language}
                                 referencesEnabled={
                                   // EO-130e: use getChapterForSection for correct mapping + fallback false

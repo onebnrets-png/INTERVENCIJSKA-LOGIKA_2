@@ -30,8 +30,8 @@ interface ReferencesBlockProps {
   onEditReference: (id: string, ref: Partial<Reference>) => void;
   onDeleteReference: (id: string) => void;
   onOpenAddModal: (sectionKey: string) => void;
-  onCollectFromSection?: (sectionKey: string) => void;
-  onInjectReferences?: (sectionKey: string) => void; // EO-147: retroactive injection
+  // EO-147d: onCollectFromSection removed — unified into onInjectReferences
+  onInjectReferences?: (sectionKey: string) => void; // EO-147/EO-147d: unified add/refresh references
   language: 'en' | 'si';
   referencesEnabled?: boolean; // EO-130: when false, block is hidden (references toggled OFF)
 }
@@ -120,7 +120,7 @@ const ReferencesBlock: React.FC<ReferencesBlockProps> = ({
   onEditReference,
   onDeleteReference,
   onOpenAddModal,
-  onCollectFromSection,
+  // EO-147d: onCollectFromSection removed
   onInjectReferences,
   language,
   referencesEnabled = false, // EO-130f: default false — caller must explicitly pass true when refs are enabled
@@ -538,28 +538,19 @@ const ReferencesBlock: React.FC<ReferencesBlockProps> = ({
               {tr.add || 'Add Reference'}
             </button>
 
-            {onCollectFromSection && (
-              <button
-                onClick={() => onCollectFromSection(sectionKey)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg border border-dashed border-amber-200 transition-all active:scale-[0.98]"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-                </svg>
-                {tr.collectFromText || 'Collect references from text'}
-              </button>
-            )}
-
+            {/* EO-147d: unified single button — replaces separate collect + inject buttons */}
             {onInjectReferences && (
               <button
                 onClick={() => onInjectReferences(sectionKey)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-dashed border-emerald-200 transition-all active:scale-[0.98]"
-                title={language === 'si' ? 'Dodaj reference k obstoječemu besedilu z AI' : 'Add references to existing text using AI'}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-dashed border-indigo-200 transition-all active:scale-[0.98]"
+                title={language === 'si'
+                  ? 'AI prebere besedilo, doda inline citate iz preverjenih virov in ustvari seznam referenc. Obstoječe reference za to poglavje se pred tem pobrišejo.'
+                  : 'AI reads the text, adds inline citations from verified sources and creates a reference list. Existing references for this chapter are removed first.'}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
                 </svg>
-                {tr.injectReferences || (language === 'si' ? 'Dodaj reference k besedilu' : 'Add references to text')}
+                📚 {tr.addRefreshReferences || (language === 'si' ? 'Dodaj / osveži reference' : 'Add / refresh references')}
               </button>
             )}
           </div>
@@ -571,4 +562,4 @@ const ReferencesBlock: React.FC<ReferencesBlockProps> = ({
 
 export default ReferencesBlock;
 
-// END OF ReferencesBlock.tsx v1.12 — EO-147: onInjectReferences + Add references to text button
+// END OF ReferencesBlock.tsx v1.13 — EO-147d: Unified single reference button

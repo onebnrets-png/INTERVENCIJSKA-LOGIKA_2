@@ -1,6 +1,7 @@
 // hooks/useGeneration.ts
 // ═══════════════════════════════════════════════════════════════ 
 // AI content generation — sections, fields, summaries.
+// v7.65 — 2026-03-24 — EO-147d: Pre-clean refs in injectReferencesToText
 // v7.64 — 2026-03-23 — EO-147: injectReferencesToText helper
 // v7.63 — 2026-03-23 — EO-146: Add chapterPrefix to collectReferencesFromSection
 // v7.62 — 2026-03-23 — EO-145: Fix safety strip regex for prefixed [XX-N] markers + hide FieldCitationsPreview when refs OFF
@@ -1341,8 +1342,15 @@ export async function injectReferencesToText(
 ): Promise<{ updatedSectionData: any; newRefs: any[] }> {
   const { generateSectionContent: genRaw } = await import('../services/geminiService.ts');
   const chapterPrefix = _getChapterPrefix(sectionKey);
+  // EO-147d: Pre-clean old refs for this section — _runFullReferencePipeline Step 1 also handles this,
+  // but we clean here so nextNum calculation is correct and pipeline starts fresh
   const existingRefs = Array.isArray(projectData.references) ? projectData.references : [];
-  const existingChapterRefs = existingRefs.filter((r: any) => r.chapterPrefix === chapterPrefix);
+  const cleanedRefs = existingRefs.filter((ref: any) => !ref.sectionKey || ref.sectionKey !== sectionKey);
+  const removedCount = existingRefs.length - cleanedRefs.length;
+  if (removedCount > 0) {
+    console.log('[EO-147d] injectReferencesToText: pre-cleaned ' + removedCount + ' old refs for "' + sectionKey + '"');
+  }
+  const existingChapterRefs = cleanedRefs.filter((r: any) => r.chapterPrefix === chapterPrefix);
   const nextNum = existingChapterRefs.length + 1;
 
   const sectionJson = JSON.stringify(sectionData);
@@ -1375,8 +1383,8 @@ export async function injectReferencesToText(
     return { updatedSectionData: sectionData, newRefs: [] };
   }
 
-  // Run reference pipeline to convert [N] → [XX-N] and extract refs
-  const pipelineData: any = { references: [...existingRefs] };
+  // Run reference pipeline to convert [N] → [XX-N] and extract refs (EO-147d: uses cleanedRefs — no old section refs)
+  const pipelineData: any = { references: [...cleanedRefs] };
   const pipelineResult = _runFullReferencePipeline(sectionKey, result, pipelineData, { skipVerification: true });
   const cleanData = pipelineResult.cleanData;
   const newRefs = pipelineResult.extractedRefs || [];
