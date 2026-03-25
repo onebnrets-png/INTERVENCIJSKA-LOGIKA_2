@@ -1,6 +1,8 @@
 // hooks/useGeneration.ts
 // ═══════════════════════════════════════════════════════════════ 
 // AI content generation — sections, fields, summaries.
+// v7.70 — 2026-03-24 — EO-156: Clear isLoading on cancel to prevent old modal flash. setIsLoading(false) called after setGenerationProgress in cancelGeneration.
+//         EO-157: Hallucinated author filter in _convertAiRefsToReferences (Vertex AI Search, Google Search, Gemini, etc.).
 // v7.69 — 2026-03-24 — EO-151: Fix progress modal lost after cancel+restart (finally block sectionKey guard)
 //         EO-152: Auto-repair empty/broken reference URLs after composite generation
 // v7.68 — 2026-03-24 — EO-149: Fix _originalMarker loss — save _savedOriginalMarker before [N]→[XX-N] conversion
@@ -1237,6 +1239,12 @@ function _convertAiRefsToReferences(aiRefs: any[], sectionKey: string, existingR
     var ar = aiRefs[i];
     if (!ar || !ar.title) continue;
     if (!ar.authors) ar.authors = ar.source || 'Unknown author';
+    // EO-157: Double-check for hallucinated authors in conversion
+    var _EO157_HALLUCINATED_AUTHORS = ['vertex ai search', 'vertexaisearch', 'google search', 'google scholar', 'gemini', 'ai search'];
+    if (ar.authors && _EO157_HALLUCINATED_AUTHORS.some(function(h: string) { return ar.authors.toLowerCase().includes(h); })) {
+      console.warn('[EO-157] Hallucinated author cleared: "' + ar.authors + '"');
+      ar.authors = '';
+    }
     // ★ EO-112b: Filter Gemini grounding API redirect URLs
     if (ar.url && (ar.url.includes('vertexaisearch.cloud.google.com') || ar.url.includes('grounding-api-redirect'))) {
       console.warn('[EO-112b] Filtered vertexaisearch redirect URL for: ' + (ar.title || '').substring(0, 50));
@@ -1695,6 +1703,7 @@ export const useGeneration = ({
       if (!prev) return null;
       return { ...prev, visible: false, _cancelledKey: prev.sectionKey };
     });
+    setIsLoading(false);  // EO-156: Clear old loading overlay immediately on cancel
     setError(
       language === 'si'
         ? 'Generiranje preklicano.'
