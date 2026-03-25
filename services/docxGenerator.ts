@@ -1,17 +1,20 @@
 // services/docxGenerator.ts
 // ═══════════════════════════════════════════════════════════════
-// v6.3 — 2026-03-25 — EO-158: DOCX FOOTNOTES + BIBLIOGRAPHY
-//   ★ v6.3: [XX-N] inline markers → DOCX footnotes (superscript refs)
-//   ★ v6.3: Bibliography section at end of document (grouped by chapter)
-//   ★ v6.3: APA-style citations with clickable URLs in footnotes + bibliography
-//   ★ v6.3: buildReferenceMap, assignFootnoteIds, buildFootnotesConfig,
-//            splitTextWithFootnotes, PWithRefs, buildBibliographySection
-//   ★ v6.3: renderProblemNode + renderResultList accept refMap/footnoteIdMap
+// v6.4 — 2026-03-25 — EO-158b + EO-158c: Footnote markers + Word repair fix
+//   ★ v6.4: EO-158b: Footnotes now show [XX-N] marker (bold) at start
+//            for cross-referencing with bibliography
+//   ★ v6.4: EO-158c: postProcessDocx() — JSZip post-processing to fix:
+//            - Separator/continuation footnotes (strip w:footnoteRef + w:rStyle)
+//            - Missing endnotes.xml (add with relationships + content types)
+//            - Missing w:space="0" on table borders
+//            Word repair dialog ("Sprožne opombe") no longer appears.
+//   - v6.3: EO-158: DOCX footnotes + bibliography (base implementation)
 //   - v6.2: safeArray defensive handling
 //   - v6.1: Partnership & Finance sections
 // ═══════════════════════════════════════════════════════════════
 
 import * as docx from 'docx';
+import JSZip from 'jszip';
 import { getSteps, getReadinessLevelsDefinitions } from '../constants.tsx';
 import { TEXT } from '../locales.ts';
 import {
@@ -208,6 +211,11 @@ const buildFootnotesConfig = (references: any[], footnoteIdMap: Map<string, numb
     if (fnId === undefined) return;
 
     const children: any[] = [];
+
+    // ★ EO-158b: Add original marker [XX-N] at start of footnote for identification
+    if (ref.inlineMarker) {
+      children.push(new TextRun({ text: `${ref.inlineMarker} `, bold: true, font: 'Calibri', size: 18 }));
+    }
 
     if (ref.authors) {
       children.push(new TextRun({ text: ref.authors + ' ', font: 'Calibri', size: 18 }));
@@ -438,9 +446,122 @@ export const generateSummaryDocx = async (summaryText, projectTitle, language = 
             ]
         }]
     });
-    return Packer.toBlob(doc);
+    const rawBlob = await Packer.toBlob(doc);
+    return postProcessDocx(rawBlob);  // ★ EO-158c: Fix Word repair dialog
 };
 
+
+// ═══════════════════════════════════════════════════════════════
+// ★ v6.4: EO-158c — Post-process DOCX to fix Word repair dialog
+//   Fixes separator/continuation footnotes that docx-js generates
+//   with invalid <w:footnoteRef/> and <w:rStyle> elements.
+//   Also adds missing endnotes.xml if absent.
+// ═══════════════════════════════════════════════════════════════
+
+const postProcessDocx = async (blob: Blob): Promise<Blob> => {
+  try {
+    const zip = await JSZip.loadAsync(blob);
+
+    // ── Fix 1: Clean separator/continuation footnotes in word/footnotes.xml ──
+    const footnotesFile = zip.file('word/footnotes.xml');
+    if (footnotesFile) {
+      let xml = await footnotesFile.async('string');
+
+      xml = xml.replace(
+        /<w:footnote\s+w:type="separator"\s+w:id="-1">[^]*?<\/w:footnote>/g,
+        '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
+      );
+
+      xml = xml.replace(
+        /<w:footnote\s+w:type="continuationSeparator"\s+w:id="0">[^]*?<\/w:footnote>/g,
+        '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>'
+      );
+
+      zip.file('word/footnotes.xml', xml);
+      console.log('[EO-158c] Footnotes XML cleaned — separator/continuation footnotes fixed');
+    }
+
+    // ── Fix 2: Add endnotes.xml if missing (Word requires it when footnotes exist) ──
+    if (!zip.file('word/endnotes.xml') && footnotesFile) {
+      const endnotesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<w:endnotes xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" ' +
+        'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ' +
+        'xmlns:o="urn:schemas-microsoft-com:office:office" ' +
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+        'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" ' +
+        'xmlns:v="urn:schemas-microsoft-com:vml" ' +
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
+        'xmlns:w10="urn:schemas-microsoft-com:office:word" ' +
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+        'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" ' +
+        'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" ' +
+        'xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" ' +
+        'xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" ' +
+        'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" ' +
+        'mc:Ignorable="w14 wp14">' +
+        '<w:endnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:endnote>' +
+        '<w:endnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:endnote>' +
+        '</w:endnotes>';
+      zip.file('word/endnotes.xml', endnotesXml);
+
+      // Add endnotes relationship to word/_rels/document.xml.rels if missing
+      const relsFile = zip.file('word/_rels/document.xml.rels');
+      if (relsFile) {
+        let relsXml = await relsFile.async('string');
+        if (!relsXml.includes('endnotes.xml')) {
+          const rIdMatches = relsXml.match(/Id="rId(\d+)"/g) || [];
+          const maxId = rIdMatches.reduce((max, m) => {
+            const num = parseInt(m.match(/\d+/)?.[0] || '0');
+            return num > max ? num : max;
+          }, 0);
+          const newRId = `rId${maxId + 1}`;
+          relsXml = relsXml.replace(
+            '</Relationships>',
+            `<Relationship Id="${newRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes" Target="endnotes.xml"/></Relationships>`
+          );
+          zip.file('word/_rels/document.xml.rels', relsXml);
+        }
+      }
+
+      // Add content type for endnotes if missing
+      const contentTypesFile = zip.file('[Content_Types].xml');
+      if (contentTypesFile) {
+        let ctXml = await contentTypesFile.async('string');
+        if (!ctXml.includes('endnotes.xml')) {
+          ctXml = ctXml.replace(
+            '</Types>',
+            '<Override PartName="/word/endnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml"/></Types>'
+          );
+          zip.file('[Content_Types].xml', ctXml);
+        }
+      }
+
+      console.log('[EO-158c] Missing endnotes.xml added with relationships');
+    }
+
+    // ── Fix 3: Add w:space="0" to table borders if missing ──
+    const documentFile = zip.file('word/document.xml');
+    if (documentFile) {
+      let docXml = await documentFile.async('string');
+      docXml = docXml.replace(
+        /<w:(top|bottom|left|right|insideH|insideV|start|end)\s+w:val="([^"]+)"\s+w:color="([^"]+)"\s+w:sz="(\d+)"\/>/g,
+        (match, side, val, color, sz) => {
+          if (match.includes('w:space=')) return match;
+          return `<w:${side} w:val="${val}" w:color="${color}" w:sz="${sz}" w:space="0"/>`;
+        }
+      );
+      zip.file('word/document.xml', docXml);
+    }
+
+    const cleanedBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    console.log('[EO-158c] DOCX post-processing complete — repair dialog should not appear');
+    return cleanedBlob;
+
+  } catch (err) {
+    console.warn('[EO-158c] Post-processing failed, returning original blob:', err);
+    return blob;
+  }
+};
 
 // ═══════════════════════════════════════════════════════════════
 //  FULL PROJECT DOCX EXPORT (with TOC and page breaks)
@@ -814,5 +935,6 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
     sections: [{ properties: {}, children }],
   });
 
-  return Packer.toBlob(doc);
+  const rawBlob = await Packer.toBlob(doc);
+  return postProcessDocx(rawBlob);  // ★ EO-158c: Fix Word repair dialog
 };
