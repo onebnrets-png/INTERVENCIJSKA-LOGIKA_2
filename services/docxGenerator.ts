@@ -1,11 +1,14 @@
 // services/docxGenerator.ts
 // ═══════════════════════════════════════════════════════════════
-// v6.2 — 2026-02-24 — DEFENSIVE ARRAY HANDLING (safeArray)
-//   ★ v6.2: NEW safeArray() utility — handles AI returning objects
-//           instead of arrays (e.g. { objectives: [...] } vs [...])
-//   ★ v6.2: renderResultList, activities, risks, kers all use safeArray()
-//   - v6.1: Partnership & Finance sections in DOCX export
-//   - All previous changes preserved.
+// v6.3 — 2026-03-25 — EO-158: DOCX FOOTNOTES + BIBLIOGRAPHY
+//   ★ v6.3: [XX-N] inline markers → DOCX footnotes (superscript refs)
+//   ★ v6.3: Bibliography section at end of document (grouped by chapter)
+//   ★ v6.3: APA-style citations with clickable URLs in footnotes + bibliography
+//   ★ v6.3: buildReferenceMap, assignFootnoteIds, buildFootnotesConfig,
+//            splitTextWithFootnotes, PWithRefs, buildBibliographySection
+//   ★ v6.3: renderProblemNode + renderResultList accept refMap/footnoteIdMap
+//   - v6.2: safeArray defensive handling
+//   - v6.1: Partnership & Finance sections
 // ═══════════════════════════════════════════════════════════════
 
 import * as docx from 'docx';
@@ -29,7 +32,10 @@ const safeArray = (v: any): any[] => {
   return [];
 };
 
-const { Document, Packer, Paragraph, HeadingLevel, TextRun, Table, TableRow, TableCell, WidthType, ShadingType, AlignmentType, VerticalAlign, ImageRun, TableOfContents } = docx;
+const { Document, Packer, Paragraph, HeadingLevel, TextRun, Table, TableRow, TableCell,
+  WidthType, ShadingType, AlignmentType, VerticalAlign, ImageRun, TableOfContents,
+  FootnoteReferenceRun, ExternalHyperlink, TabStopType, TabStopPosition
+} = docx;
 
 // Helper to handle multi-line text from textareas
 const splitText = (text) => {
@@ -61,20 +67,6 @@ const H3 = (text) => new Paragraph({ text, heading: HeadingLevel.HEADING_3, spac
 const H4 = (text) => new Paragraph({ text, heading: HeadingLevel.HEADING_4, spacing: { before: 200, after: 100 } });
 const P = (text) => new Paragraph({ children: splitText(text) });
 const Bold = (text) => new TextRun({ text, bold: true });
-
-const renderProblemNode = (node, title) => [
-  H3(title),
-  P(node.description),
-];
-
-const renderResultList = (items, title, prefix, indicatorLabel, descriptionLabel) => [
-  H2(title),
-  ...safeArray(items).flatMap((item, index) => item.title ? [
-    H3(`${prefix}${index + 1}: ${item.title}`),
-    new Paragraph({ children: [Bold(`${descriptionLabel}: `), ...splitText(item.description)] }),
-    new Paragraph({ children: [Bold(`${indicatorLabel}: `), new TextRun(item.indicator)] }),
-  ] : []),
-];
 
 // Helper: create a shaded header cell for tables
 const headerCell = (text, width = undefined) => new TableCell({
@@ -167,6 +159,255 @@ const collectAllocations = (projectData) => {
     return allAllocations;
 };
 
+// ═══════════════════════════════════════════════════════════════
+// ★ v6.3: EO-158 — Reference footnotes + bibliography helpers
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Finds all references for a given project from projectData.references
+ * Returns a map: inlineMarker → Reference
+ */
+const buildReferenceMap = (references: any[]): Map<string, any> => {
+  const map = new Map<string, any>();
+  if (!references || !Array.isArray(references)) return map;
+  references.forEach(ref => {
+    if (ref.inlineMarker) {
+      map.set(ref.inlineMarker, ref);
+    }
+  });
+  return map;
+};
+
+/**
+ * Assigns a global sequential footnote ID for each unique reference marker.
+ * docx library requires footnote IDs to be unique positive integers.
+ * Returns Map<inlineMarker, footnoteId>
+ */
+const assignFootnoteIds = (references: any[]): Map<string, number> => {
+  const idMap = new Map<string, number>();
+  if (!references || !Array.isArray(references)) return idMap;
+  let nextId = 1;
+  references.forEach(ref => {
+    if (ref.inlineMarker && !idMap.has(ref.inlineMarker)) {
+      idMap.set(ref.inlineMarker, nextId++);
+    }
+  });
+  return idMap;
+};
+
+/**
+ * Builds the footnotes config object for the Document constructor.
+ * Each footnote contains: Author (Year). Title. Source. URL
+ */
+const buildFootnotesConfig = (references: any[], footnoteIdMap: Map<string, number>): Record<number, any> => {
+  const config: Record<number, any> = {};
+  if (!references || !Array.isArray(references)) return config;
+
+  references.forEach(ref => {
+    const fnId = footnoteIdMap.get(ref.inlineMarker);
+    if (fnId === undefined) return;
+
+    const children: any[] = [];
+
+    if (ref.authors) {
+      children.push(new TextRun({ text: ref.authors + ' ', font: 'Calibri', size: 18 }));
+    }
+    if (ref.year) {
+      children.push(new TextRun({ text: `(${ref.year}). `, font: 'Calibri', size: 18 }));
+    }
+    if (ref.title) {
+      children.push(new TextRun({ text: ref.title + '. ', italics: true, font: 'Calibri', size: 18 }));
+    }
+    if (ref.source) {
+      children.push(new TextRun({ text: ref.source + '. ', font: 'Calibri', size: 18 }));
+    }
+    if (ref.url) {
+      children.push(new ExternalHyperlink({
+        children: [new TextRun({ text: ref.url, style: 'Hyperlink', font: 'Calibri', size: 18 })],
+        link: ref.url,
+      }));
+    }
+    if (ref.doi && !ref.url?.includes(ref.doi)) {
+      children.push(new TextRun({ text: ` DOI: ${ref.doi}`, font: 'Calibri', size: 18 }));
+    }
+
+    if (children.length === 0) {
+      children.push(new TextRun({ text: ref.inlineMarker || 'Unknown reference', font: 'Calibri', size: 18 }));
+    }
+
+    config[fnId] = {
+      children: [new Paragraph({ children })],
+    };
+  });
+
+  return config;
+};
+
+/**
+ * Parses text containing [XX-N] markers and returns an array of TextRun/FootnoteReferenceRun.
+ * Replaces each [XX-N] with a superscript footnote reference.
+ * If the marker has no corresponding reference, it stays as plain text.
+ */
+const splitTextWithFootnotes = (
+  text: string,
+  refMap: Map<string, any>,
+  footnoteIdMap: Map<string, number>
+): any[] => {
+  if (!text) return [];
+
+  const markerRegex = /\[([A-Z]{2,3}-\d+)\]/g;
+  const runs: any[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = markerRegex.exec(text)) !== null) {
+    const before = text.substring(lastIndex, match.index);
+    if (before) {
+      const lines = before.split('\n');
+      lines.forEach((line, i) => {
+        runs.push(new TextRun(line));
+        if (i < lines.length - 1) {
+          runs.push(new TextRun({ break: 1 }));
+        }
+      });
+    }
+
+    const fullMarker = match[0];
+    const fnId = footnoteIdMap.get(fullMarker);
+
+    if (fnId !== undefined) {
+      runs.push(new FootnoteReferenceRun(fnId));
+    } else {
+      runs.push(new TextRun(fullMarker));
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  const remaining = text.substring(lastIndex);
+  if (remaining) {
+    const lines = remaining.split('\n');
+    lines.forEach((line, i) => {
+      runs.push(new TextRun(line));
+      if (i < lines.length - 1) {
+        runs.push(new TextRun({ break: 1 }));
+      }
+    });
+  }
+
+  return runs;
+};
+
+/**
+ * Enhanced P() — creates a paragraph with footnote-aware text splitting.
+ */
+const PWithRefs = (
+  text: string,
+  refMap: Map<string, any>,
+  footnoteIdMap: Map<string, number>
+) => new Paragraph({ children: splitTextWithFootnotes(text, refMap, footnoteIdMap) });
+
+/**
+ * Builds the Bibliography / "Seznam virov" section at the end of the document.
+ * Groups references by chapterPrefix (PA, PI, GO, SO, AC, ER).
+ */
+const buildBibliographySection = (
+  references: any[],
+  language: string
+): (docx.Paragraph | docx.Table)[] => {
+  const elements: (docx.Paragraph | docx.Table)[] = [];
+  if (!references || references.length === 0) return elements;
+
+  const title = language === 'si' ? 'SEZNAM VIROV' : 'REFERENCES';
+  elements.push(H1(title));
+
+  const chapterLabels: Record<string, Record<string, string>> = {
+    'PA': { si: 'Analiza problemov', en: 'Problem Analysis' },
+    'PI': { si: 'Projektna ideja', en: 'Project Idea' },
+    'GO': { si: 'Splošni cilji', en: 'General Objectives' },
+    'SO': { si: 'Specifični cilji', en: 'Specific Objectives' },
+    'AC': { si: 'Aktivnosti', en: 'Activities' },
+    'PM': { si: 'Upravljanje projekta', en: 'Project Management' },
+    'ER': { si: 'Pričakovani rezultati', en: 'Expected Results' },
+  };
+
+  const grouped: Record<string, any[]> = {};
+  references.forEach(ref => {
+    const prefix = ref.chapterPrefix || 'OTHER';
+    if (!grouped[prefix]) grouped[prefix] = [];
+    grouped[prefix].push(ref);
+  });
+
+  const order = ['PA', 'PI', 'GO', 'SO', 'AC', 'PM', 'ER', 'OTHER'];
+
+  order.forEach(prefix => {
+    const refs = grouped[prefix];
+    if (!refs || refs.length === 0) return;
+
+    const lang = language === 'si' ? 'si' : 'en';
+    const label = chapterLabels[prefix]?.[lang] || prefix;
+    elements.push(H2(label));
+
+    refs.sort((a, b) => {
+      const aNum = parseInt(a.inlineMarker?.match(/\d+/)?.[0] || '0');
+      const bNum = parseInt(b.inlineMarker?.match(/\d+/)?.[0] || '0');
+      return aNum - bNum;
+    });
+
+    refs.forEach(ref => {
+      const children: any[] = [];
+
+      children.push(new TextRun({ text: `${ref.inlineMarker || '—'} `, bold: true }));
+
+      if (ref.authors) {
+        children.push(new TextRun({ text: ref.authors + ' ' }));
+      }
+      if (ref.year) {
+        children.push(new TextRun({ text: `(${ref.year}). ` }));
+      }
+      if (ref.title) {
+        children.push(new TextRun({ text: ref.title + '. ', italics: true }));
+      }
+      if (ref.source) {
+        children.push(new TextRun({ text: ref.source + '. ' }));
+      }
+      if (ref.url) {
+        children.push(new ExternalHyperlink({
+          children: [new TextRun({ text: ref.url, style: 'Hyperlink' })],
+          link: ref.url,
+        }));
+      }
+      if (ref.doi && !ref.url?.includes(ref.doi)) {
+        children.push(new TextRun({ text: ` DOI: ${ref.doi}` }));
+      }
+
+      elements.push(new Paragraph({ children, spacing: { after: 80 } }));
+    });
+  });
+
+  return elements;
+};
+
+// ═══════════════════════════════════════════════════════════════
+// renderProblemNode — EO-158: accepts refMap/footnoteIdMap
+// ═══════════════════════════════════════════════════════════════
+const renderProblemNode = (node, title, refMap: Map<string, any>, footnoteIdMap: Map<string, number>) => [
+  H3(title),
+  PWithRefs(node.description, refMap, footnoteIdMap),
+];
+
+// ═══════════════════════════════════════════════════════════════
+// renderResultList — EO-158: accepts refMap/footnoteIdMap
+// ═══════════════════════════════════════════════════════════════
+const renderResultList = (items, title, prefix, indicatorLabel, descriptionLabel, refMap: Map<string, any>, footnoteIdMap: Map<string, number>) => [
+  H2(title),
+  ...safeArray(items).flatMap((item, index) => item.title ? [
+    H3(`${prefix}${index + 1}: ${item.title}`),
+    new Paragraph({ children: [Bold(`${descriptionLabel}: `), ...splitTextWithFootnotes(item.description, refMap, footnoteIdMap)] }),
+    new Paragraph({ children: [Bold(`${indicatorLabel}: `), ...splitTextWithFootnotes(item.indicator, refMap, footnoteIdMap)] }),
+  ] : []),
+];
+
 
 // ═══════════════════════════════════════════════════════════════
 //  SUMMARY DOCX EXPORT (with TOC and page breaks)
@@ -215,6 +456,12 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
   const fundingModel = projectData.fundingModel || 'centralized';
   const lang = language === 'si' ? 'si' : 'en';
 
+  // ★ EO-158: Reference system setup
+  const references = projectData.references || [];
+  const refMap = buildReferenceMap(references);
+  const footnoteIdMap = assignFootnoteIds(references);
+  const footnotesConfig = buildFootnotesConfig(references, footnoteIdMap);
+
   const getRiskColor = (level) => {
       const l = level.toLowerCase();
       if (l === 'high') return "C00000";
@@ -236,21 +483,21 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
   children.push(H1(STEPS[0].title));
   children.push(H2(t.coreProblem));
   children.push(H3(problemAnalysis.coreProblem.title));
-  children.push(P(problemAnalysis.coreProblem.description));
+  children.push(PWithRefs(problemAnalysis.coreProblem.description, refMap, footnoteIdMap));
   children.push(H2(t.causes));
-  problemAnalysis.causes.forEach((cause, i) => cause.title && children.push(...renderProblemNode(cause, `${t.causeTitle} #${i + 1}: ${cause.title}`)));
+  problemAnalysis.causes.forEach((cause, i) => cause.title && children.push(...renderProblemNode(cause, `${t.causeTitle} #${i + 1}: ${cause.title}`, refMap, footnoteIdMap)));
   children.push(H2(t.consequences));
-  problemAnalysis.consequences.forEach((consequence, i) => consequence.title && children.push(...renderProblemNode(consequence, `${t.consequenceTitle} #${i + 1}: ${consequence.title}`)));
+  problemAnalysis.consequences.forEach((consequence, i) => consequence.title && children.push(...renderProblemNode(consequence, `${t.consequenceTitle} #${i + 1}: ${consequence.title}`, refMap, footnoteIdMap)));
 
   // ─── 2. PROJECT IDEA ───
   children.push(H1(STEPS[1].title));
   children.push(H2(t.mainAim));
-  children.push(P(projectIdea.mainAim));
+  children.push(PWithRefs(projectIdea.mainAim, refMap, footnoteIdMap));
   children.push(H2(t.stateOfTheArt));
-  children.push(P(projectIdea.stateOfTheArt));
+  children.push(PWithRefs(projectIdea.stateOfTheArt, refMap, footnoteIdMap));
   children.push(H2(t.proposedSolution));
-  children.push(P(projectIdea.proposedSolution));
-  
+  children.push(PWithRefs(projectIdea.proposedSolution, refMap, footnoteIdMap));
+
   children.push(H2(t.readinessLevels));
   Object.entries(projectIdea.readinessLevels).forEach(([key, value]) => {
       const valueTyped = value as { level: number | null, justification: string };
@@ -264,29 +511,29 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
   });
 
   children.push(H2(t.euPolicies));
-  projectIdea.policies.forEach((policy) => policy.name && children.push(H3(policy.name), P(policy.description)));
+  projectIdea.policies.forEach((policy) => policy.name && children.push(H3(policy.name), PWithRefs(policy.description, refMap, footnoteIdMap)));
 
   // ─── 3. GENERAL OBJECTIVES ───
   children.push(H1(STEPS[2].title));
-  children.push(...renderResultList(generalObjectives, t.generalObjectives, 'GO', t.indicator, t.description));
+  children.push(...renderResultList(generalObjectives, t.generalObjectives, 'GO', t.indicator, t.description, refMap, footnoteIdMap));
 
   // ─── 4. SPECIFIC OBJECTIVES ───
   children.push(H1(STEPS[3].title));
-  children.push(...renderResultList(specificObjectives, t.specificObjectives, 'SO', t.indicator, t.description));
-  
+  children.push(...renderResultList(specificObjectives, t.specificObjectives, 'SO', t.indicator, t.description, refMap, footnoteIdMap));
+
   // ─── 5. ACTIVITIES ───
   children.push(H1(STEPS[4].title));
-  
+
   // Project Management
   if (projectManagement) {
       children.push(H2(t.management.title));
       if (projectManagement.description && projectManagement.description.trim() !== '') {
-          children.push(P(projectManagement.description));
+          children.push(PWithRefs(projectManagement.description, refMap, footnoteIdMap));
       }
       children.push(H3(t.management.organigram));
       if (organigramData && organigramData.dataUrl) {
           try {
-              const imgWidth = 600; 
+              const imgWidth = 600;
               const aspectRatio = organigramData.height / organigramData.width;
               const imgHeight = imgWidth * aspectRatio;
               const base64Data = organigramData.dataUrl.split(',')[1] || organigramData.dataUrl;
@@ -314,7 +561,6 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
       }
       children.push(new Paragraph({ text: '', spacing: { after: 100 } }));
 
-      // Partner Table
       const partnerHeaderRow = new TableRow({
           children: [
               headerCell(tp.code || 'Code'),
@@ -345,14 +591,13 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
   safeArray(activities).forEach(wp => {
     if (!wp.title) return;
     children.push(H3(`${wp.id}: ${wp.title}`));
-    
-    // Tasks Table
+
     children.push(H4(t.tasks));
     const taskRows = wp.tasks.map(task => new TableRow({
         children: [
             new TableCell({ children: [P(task.id)] }),
             new TableCell({ children: [P(task.title)] }),
-            new TableCell({ children: [P(task.description)] }),
+            new TableCell({ children: [PWithRefs(task.description, refMap, footnoteIdMap)] }),
             new TableCell({ children: [P(task.startDate)] }),
             new TableCell({ children: [P(task.endDate)] }),
         ]
@@ -410,13 +655,25 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
     // Milestones
     if (wp.milestones?.length > 0 && wp.milestones.some(m => m.description)) {
         children.push(H4(t.milestones));
-        wp.milestones.forEach(m => m.description && children.push(new Paragraph({ text: `${m.id}: ${m.description}`, bullet: { level: 0 } })));
+        wp.milestones.forEach(m => m.description && children.push(new Paragraph({
+            children: [new TextRun({ text: `${m.id}: `, bold: true }), ...splitTextWithFootnotes(m.description, refMap, footnoteIdMap)],
+            bullet: { level: 0 }
+        })));
     }
-    
+
     // Deliverables
     if (wp.deliverables?.length > 0 && wp.deliverables.some(d => d.description)) {
         children.push(H4(t.deliverables));
-        wp.deliverables.forEach(d => d.description && children.push(new Paragraph({ text: `${d.id}: ${d.description} (${t.indicator}: ${d.indicator})`, bullet: { level: 0 } })));
+        wp.deliverables.forEach(d => d.description && children.push(new Paragraph({
+            children: [
+                new TextRun({ text: `${d.id}: `, bold: true }),
+                ...splitTextWithFootnotes(d.description, refMap, footnoteIdMap),
+                new TextRun(` (${t.indicator}: `),
+                ...splitTextWithFootnotes(d.indicator || '', refMap, footnoteIdMap),
+                new TextRun(')'),
+            ],
+            bullet: { level: 0 }
+        })));
     }
   });
 
@@ -462,14 +719,12 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
       const grandHours = allAllocations.reduce((s, a) => s + a.hours, 0);
       const grandPM = allAllocations.reduce((s, a) => s + a.pm, 0);
 
-      // Totals paragraph
       children.push(new Paragraph({ children: [
           Bold(`${tf.totalDirectCosts || 'Total Direct'}: `), new TextRun(`€${grandDirect.toLocaleString()}  |  `),
           Bold(`${tf.totalIndirectCosts || 'Total Indirect'}: `), new TextRun(`€${grandIndirect.toLocaleString()}  |  `),
           Bold(`${tf.grandTotal || 'Grand Total'}: `), new TextRun({ text: `€${grandTotal.toLocaleString()}`, bold: true }),
       ], spacing: { before: 150, after: 150 } }));
 
-      // Per WP table
       children.push(H3(tf.perWP || 'Per Work Package'));
       const wpGroups: Record<string, any[]> = {};
       allAllocations.forEach(a => { if (!wpGroups[a.wpId]) wpGroups[a.wpId] = []; wpGroups[a.wpId].push(a); });
@@ -488,7 +743,6 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
       const wpTotalRow = new TableRow({ children: [totalCell(tf.grandTotal || 'TOTAL'), totalCell(`€${grandDirect.toLocaleString()}`, AlignmentType.RIGHT), totalCell(`€${grandIndirect.toLocaleString()}`, AlignmentType.RIGHT), totalCell(`€${grandTotal.toLocaleString()}`, AlignmentType.RIGHT), totalCell(String(grandHours), AlignmentType.RIGHT), totalCell(grandPM.toFixed(1), AlignmentType.RIGHT)] });
       children.push(new Table({ rows: [wpHeaderRow, ...wpDataRows, wpTotalRow], width: { size: 100, type: WidthType.PERCENTAGE } }));
 
-      // Per Partner table
       children.push(H3(tf.perPartner || 'Per Partner'));
       const partnerGroups: Record<string, any[]> = {};
       allAllocations.forEach(a => { if (!partnerGroups[a.partnerCode]) partnerGroups[a.partnerCode] = []; partnerGroups[a.partnerCode].push(a); });
@@ -515,33 +769,38 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
           if (!risk.description) return;
           const categoryLabel = t.risks.categories[risk.category.toLowerCase()] || risk.category;
           children.push(H3(`${risk.id || `Risk ${i+1}`}: ${risk.title} (${categoryLabel})`));
-          children.push(P(risk.description));
+          children.push(PWithRefs(risk.description, refMap, footnoteIdMap));
           children.push(new Paragraph({ children: [Bold(`${t.risks.likelihood}: `), new TextRun({ text: t.risks.levels[risk.likelihood.toLowerCase()] || risk.likelihood, bold: true, color: getRiskColor(risk.likelihood) })] }));
           children.push(new Paragraph({ children: [Bold(`${t.risks.impact}: `), new TextRun({ text: t.risks.levels[risk.impact.toLowerCase()] || risk.impact, bold: true, color: getRiskColor(risk.impact) })] }));
           children.push(new Paragraph({ children: [Bold(`${t.risks.mitigation}: `)] }));
-          children.push(P(risk.mitigation));
+          children.push(PWithRefs(risk.mitigation, refMap, footnoteIdMap));
       });
   }
 
   // ─── 6. EXPECTED RESULTS ───
   children.push(H1(STEPS[5].title));
-  children.push(...renderResultList(outputs, t.outputs, 'D', t.indicator, t.description));
-  children.push(...renderResultList(outcomes, t.outcomes, 'R', t.indicator, t.description));
-  children.push(...renderResultList(impacts, t.impacts, 'I', t.indicator, t.description));
+  children.push(...renderResultList(outputs, t.outputs, 'D', t.indicator, t.description, refMap, footnoteIdMap));
+  children.push(...renderResultList(outcomes, t.outcomes, 'R', t.indicator, t.description, refMap, footnoteIdMap));
+  children.push(...renderResultList(impacts, t.impacts, 'I', t.indicator, t.description, refMap, footnoteIdMap));
 
   if (safeArray(kers).length > 0) {
-      children.push(H2(t.kers.kerTitle)); 
+      children.push(H2(t.kers.kerTitle));
       safeArray(kers).forEach((ker, i) => {
           if (!ker.title) return;
           children.push(H3(`${ker.id || `KER${i+1}`}: ${ker.title}`));
-          children.push(new Paragraph({ children: [Bold(`${t.description}: `), ...splitText(ker.description)] }));
-          children.push(new Paragraph({ children: [Bold(`${t.kers.exploitationStrategy}: `), ...splitText(ker.exploitationStrategy)] }));
+          children.push(new Paragraph({ children: [Bold(`${t.description}: `), ...splitTextWithFootnotes(ker.description, refMap, footnoteIdMap)] }));
+          children.push(new Paragraph({ children: [Bold(`${t.kers.exploitationStrategy}: `), ...splitTextWithFootnotes(ker.exploitationStrategy, refMap, footnoteIdMap)] }));
       });
   }
+
+  // ★ EO-158: Bibliography / Seznam virov
+  const bibliographySection = buildBibliographySection(references, language);
+  children.push(...bibliographySection);
 
   // ─── BUILD DOCUMENT ───
   const doc = new Document({
     features: { updateFields: true },
+    footnotes: footnotesConfig,  // ★ EO-158: Footnote definitions
     styles: {
       default: {
         document: { run: { font: "Calibri", size: 22 } },
