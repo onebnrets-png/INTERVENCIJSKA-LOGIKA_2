@@ -1,13 +1,13 @@
 /**
- * services/docxGenerator.ts — v6.6 (2026-03-25)
+ * services/docxGenerator.ts — v6.7 (2026-03-25)
  *
- * EO-158e: Triple reference system in DOCX export
- *   - In-text: (Author, Year) remains as plain text (AI-generated)
- *   - Superscript [PA-4] as InternalHyperlink → bookmark in SEZNAM VIROV
- *   - Superscript ¹ as FootnoteReferenceRun → footnote at page bottom
- *   - Footnote: [PA-4] + full APA citation with clickable URL
- *   - Bibliography: SEZNAM VIROV grouped by chapter with Bookmarks
+ * EO-158f: Fix marker key mismatch — inlineMarker stored as '[PA-4]' in types.ts
+ *   but all lookup functions expected 'PA-4'. Added stripBrackets() helper.
+ *   Normalized keys in: buildReferenceMap, assignFootnoteIds, buildBibliographySection.
+ *   splitTextWithMarkers and buildFootnotesConfig already used stripped keys — no change.
+ *   Added temporary debug logs for verification.
  *
+ * EO-158e: Triple reference system (InternalHyperlink + FootnoteReferenceRun + Bibliography)
  * EO-158c: postProcessDocx() — JSZip fix for Word repair dialog
  * EO-158b: Bold [XX-N] marker in footnotes
  *   - v6.3: EO-158: DOCX footnotes + bibliography (base implementation)
@@ -35,6 +35,12 @@ const safeArray = (v: any): any[] => {
     }
   }
   return [];
+};
+
+/** ★ EO-158f: Strip surrounding brackets from inlineMarker: '[PA-4]' → 'PA-4' */
+const stripBrackets = (marker: string): string => {
+  if (!marker) return '';
+  return marker.replace(/^\[/, '').replace(/\]$/, '');
 };
 
 const { Document, Packer, Paragraph, HeadingLevel, TextRun, Table, TableRow, TableCell,
@@ -178,7 +184,9 @@ const buildReferenceMap = (references: any[]): Map<string, any> => {
   if (!references || !Array.isArray(references)) return map;
   references.forEach(ref => {
     if (ref.inlineMarker) {
-      map.set(ref.inlineMarker, ref);
+      // ★ EO-158f: normalize key — strip brackets '[PA-4]' → 'PA-4'
+      const key = stripBrackets(ref.inlineMarker);
+      map.set(key, ref);
     }
   });
   return map;
@@ -194,8 +202,12 @@ const assignFootnoteIds = (references: any[]): Map<string, number> => {
   if (!references || !Array.isArray(references)) return idMap;
   let nextId = 1;
   references.forEach(ref => {
-    if (ref.inlineMarker && !idMap.has(ref.inlineMarker)) {
-      idMap.set(ref.inlineMarker, nextId++);
+    if (ref.inlineMarker) {
+      // ★ EO-158f: normalize key — strip brackets
+      const key = stripBrackets(ref.inlineMarker);
+      if (!idMap.has(key)) {
+        idMap.set(key, nextId++);
+      }
     }
   });
   return idMap;
@@ -411,7 +423,9 @@ const buildBibliographySection = (
     });
 
     refs.forEach(ref => {
-      const markerKey = ref.inlineMarker || `${prefix}-?`;
+      // ★ EO-158f: strip brackets from inlineMarker for consistent anchor matching
+      const rawMarker = ref.inlineMarker || `${prefix}-?`;
+      const markerKey = stripBrackets(rawMarker);
       const anchorId  = `ref_${markerKey.replace(/-/g, '_')}`;
       const children: any[] = [];
 
@@ -649,6 +663,24 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
   const refMap = buildReferenceMap(references);
   const footnoteIdMap = assignFootnoteIds(references);
   const footnotesConfig = buildFootnotesConfig(refMap, footnoteIdMap);
+
+  // ★ TEMPORARY DEBUG — remove after EO-158f is confirmed working
+  console.log('[DOCX-DEBUG] projectData.references:', references.length, 'items');
+  if (references.length > 0) {
+    console.log('[DOCX-DEBUG] First 3 refs (raw inlineMarker):', references.slice(0, 3).map(r => ({
+      inlineMarker: r.inlineMarker,
+      chapterPrefix: r.chapterPrefix,
+      author: r.author,
+      title: (r.title || '').substring(0, 50)
+    })));
+    console.log('[DOCX-DEBUG] refMap size:', refMap.size, '| keys:', [...refMap.keys()].slice(0, 8));
+    console.log('[DOCX-DEBUG] footnoteIdMap size:', footnoteIdMap.size, '| entries:', [...footnoteIdMap.entries()].slice(0, 8));
+    console.log('[DOCX-DEBUG] footnotesConfig keys:', Object.keys(footnotesConfig).slice(0, 8));
+  } else {
+    console.log('[DOCX-DEBUG] ⚠ NO REFERENCES found in projectData!');
+    console.log('[DOCX-DEBUG] projectData keys:', Object.keys(projectData));
+    console.log('[DOCX-DEBUG] projectData.references raw value:', projectData.references);
+  }
 
   const getRiskColor = (level) => {
       const l = level.toLowerCase();
