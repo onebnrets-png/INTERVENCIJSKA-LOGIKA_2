@@ -1,17 +1,19 @@
-// services/docxGenerator.ts
-// ═══════════════════════════════════════════════════════════════
-// v6.4 — 2026-03-25 — EO-158b + EO-158c: Footnote markers + Word repair fix
-//   ★ v6.4: EO-158b: Footnotes now show [XX-N] marker (bold) at start
-//            for cross-referencing with bibliography
-//   ★ v6.4: EO-158c: postProcessDocx() — JSZip post-processing to fix:
-//            - Separator/continuation footnotes (strip w:footnoteRef + w:rStyle)
-//            - Missing endnotes.xml (add with relationships + content types)
-//            - Missing w:space="0" on table borders
-//            Word repair dialog ("Sprožne opombe") no longer appears.
-//   - v6.3: EO-158: DOCX footnotes + bibliography (base implementation)
-//   - v6.2: safeArray defensive handling
-//   - v6.1: Partnership & Finance sections
-// ═══════════════════════════════════════════════════════════════
+/**
+ * services/docxGenerator.ts — v6.6 (2026-03-25)
+ *
+ * EO-158e: Triple reference system in DOCX export
+ *   - In-text: (Author, Year) remains as plain text (AI-generated)
+ *   - Superscript [PA-4] as InternalHyperlink → bookmark in SEZNAM VIROV
+ *   - Superscript ¹ as FootnoteReferenceRun → footnote at page bottom
+ *   - Footnote: [PA-4] + full APA citation with clickable URL
+ *   - Bibliography: SEZNAM VIROV grouped by chapter with Bookmarks
+ *
+ * EO-158c: postProcessDocx() — JSZip fix for Word repair dialog
+ * EO-158b: Bold [XX-N] marker in footnotes
+ *   - v6.3: EO-158: DOCX footnotes + bibliography (base implementation)
+ *   - v6.2: safeArray defensive handling
+ *   - v6.1: Partnership & Finance sections
+ */
 
 import * as docx from 'docx';
 import JSZip from 'jszip';
@@ -37,7 +39,8 @@ const safeArray = (v: any): any[] => {
 
 const { Document, Packer, Paragraph, HeadingLevel, TextRun, Table, TableRow, TableCell,
   WidthType, ShadingType, AlignmentType, VerticalAlign, ImageRun, TableOfContents,
-  FootnoteReferenceRun, ExternalHyperlink, TabStopType, TabStopPosition
+  FootnoteReferenceRun, ExternalHyperlink, TabStopType, TabStopPosition,
+  InternalHyperlink, Bookmark, PageBreak
 } = docx;
 
 // Helper to handle multi-line text from textareas
@@ -200,196 +203,260 @@ const assignFootnoteIds = (references: any[]): Map<string, number> => {
 
 /**
  * Builds the footnotes config object for the Document constructor.
- * Each footnote contains: Author (Year). Title. Source. URL
+ * Each footnote: [PA-4] bold marker + full APA citation + clickable URL
+ * ★ EO-158e: updated to use refMap; supports ref.author (singular) + ref.authors (plural)
  */
-const buildFootnotesConfig = (references: any[], footnoteIdMap: Map<string, number>): Record<number, any> => {
+const buildFootnotesConfig = (refMap: Map<string, any>, footnoteIdMap: Map<string, number>): Record<number, any> => {
   const config: Record<number, any> = {};
-  if (!references || !Array.isArray(references)) return config;
 
-  references.forEach(ref => {
-    const fnId = footnoteIdMap.get(ref.inlineMarker);
-    if (fnId === undefined) return;
+  for (const [markerKey, fnId] of footnoteIdMap.entries()) {
+    const ref = refMap.get(markerKey);
+    if (!ref) continue;
 
     const children: any[] = [];
 
-    // ★ EO-158b: Add original marker [XX-N] at start of footnote for identification
-    if (ref.inlineMarker) {
-      children.push(new TextRun({ text: `${ref.inlineMarker} `, bold: true, font: 'Calibri', size: 18 }));
+    // ★ EO-158b/e: Bold [PA-4] marker at start
+    children.push(new TextRun({ text: `[${markerKey}] `, bold: true, font: 'Calibri', size: 18 }));
+
+    // Author (support both ref.author and ref.authors)
+    const author = ref.author || ref.authors || '';
+    if (author.trim() !== '') {
+      children.push(new TextRun({ text: `${author} `, font: 'Calibri', size: 18 }));
     }
 
-    if (ref.authors) {
-      children.push(new TextRun({ text: ref.authors + ' ', font: 'Calibri', size: 18 }));
-    }
     if (ref.year) {
       children.push(new TextRun({ text: `(${ref.year}). `, font: 'Calibri', size: 18 }));
     }
-    if (ref.title) {
-      children.push(new TextRun({ text: ref.title + '. ', italics: true, font: 'Calibri', size: 18 }));
+    if (ref.title && ref.title.trim() !== '') {
+      children.push(new TextRun({ text: `${ref.title}. `, italics: true, font: 'Calibri', size: 18 }));
     }
-    if (ref.source) {
-      children.push(new TextRun({ text: ref.source + '. ', font: 'Calibri', size: 18 }));
+    if (ref.source && ref.source.trim() !== '') {
+      children.push(new TextRun({ text: `${ref.source}. `, font: 'Calibri', size: 18 }));
     }
-    if (ref.url) {
+    if (ref.url && ref.url.trim() !== '' && /^https?:\/\//.test(ref.url)) {
       children.push(new ExternalHyperlink({
-        children: [new TextRun({ text: ref.url, style: 'Hyperlink', font: 'Calibri', size: 18 })],
         link: ref.url,
+        children: [new TextRun({ text: ref.url, style: 'Hyperlink', font: 'Calibri', size: 18 })]
       }));
+    } else if (ref.url && ref.url.trim() !== '') {
+      children.push(new TextRun({ text: ref.url, font: 'Calibri', size: 18 }));
     }
     if (ref.doi && !ref.url?.includes(ref.doi)) {
       children.push(new TextRun({ text: ` DOI: ${ref.doi}`, font: 'Calibri', size: 18 }));
     }
 
-    if (children.length === 0) {
-      children.push(new TextRun({ text: ref.inlineMarker || 'Unknown reference', font: 'Calibri', size: 18 }));
+    if (children.length <= 1) {
+      children.push(new TextRun({ text: markerKey || 'Unknown reference', font: 'Calibri', size: 18 }));
     }
 
     config[fnId] = {
-      children: [new Paragraph({ children })],
+      children: [new Paragraph({ children, spacing: { after: 40 } })],
     };
-  });
+  }
 
   return config;
 };
 
 /**
- * Parses text containing [XX-N] markers and returns an array of TextRun/FootnoteReferenceRun.
- * Replaces each [XX-N] with a superscript footnote reference.
- * If the marker has no corresponding reference, it stays as plain text.
+ * ★ EO-158e: splitTextWithMarkers — Triple reference system
+ * For each [PA-4] marker in text, emits:
+ *   1. InternalHyperlink [PA-4] (superscript, bold, blue) → Bookmark ref_PA_4 in bibliography
+ *   2. FootnoteReferenceRun ¹ → footnote at page bottom
+ * Plain text segments are preserved as TextRun.
  */
-const splitTextWithFootnotes = (
+const splitTextWithMarkers = (
   text: string,
   refMap: Map<string, any>,
-  footnoteIdMap: Map<string, number>
+  footnoteIdMap: Map<string, number>,
+  baseFormat: { font?: string; size?: number; bold?: boolean; italics?: boolean } = {}
 ): any[] => {
   if (!text) return [];
 
-  const markerRegex = /\[([A-Z]{2,3}-\d+)\]/g;
   const runs: any[] = [];
+  const markerRegex = /\[([A-Z]{2,4}-\d+)\]/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
   while ((match = markerRegex.exec(text)) !== null) {
-    const before = text.substring(lastIndex, match.index);
-    if (before) {
+    // Text before marker
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index);
       const lines = before.split('\n');
       lines.forEach((line, i) => {
-        runs.push(new TextRun(line));
-        if (i < lines.length - 1) {
-          runs.push(new TextRun({ break: 1 }));
-        }
+        runs.push(new TextRun({
+          text: line,
+          font: baseFormat.font || 'Calibri',
+          size: baseFormat.size || 22,
+          bold: baseFormat.bold || false,
+          italics: baseFormat.italics || false,
+        }));
+        if (i < lines.length - 1) runs.push(new TextRun({ break: 1 }));
       });
     }
 
-    const fullMarker = match[0];
-    const fnId = footnoteIdMap.get(fullMarker);
+    const fullMarker = match[0];      // "[PA-4]"
+    const markerKey  = match[1];      // "PA-4"
+    const anchorId   = `ref_${markerKey.replace(/-/g, '_')}`; // "ref_PA_4"
+    const fnId       = footnoteIdMap.get(markerKey);
 
+    // ★ PART 1: [PA-4] as superscript blue bold InternalHyperlink → bibliography bookmark
+    runs.push(new InternalHyperlink({
+      anchor: anchorId,
+      children: [new TextRun({
+        text: fullMarker,
+        superScript: true,
+        bold: true,
+        color: '2B579A',
+        font: baseFormat.font || 'Calibri',
+        size: baseFormat.size ? Math.max(baseFormat.size - 4, 14) : 18,
+      })],
+    }));
+
+    // ★ PART 2: ¹ as FootnoteReferenceRun → footnote at page bottom
     if (fnId !== undefined) {
       runs.push(new FootnoteReferenceRun(fnId));
-    } else {
-      runs.push(new TextRun(fullMarker));
     }
 
     lastIndex = match.index + match[0].length;
   }
 
-  const remaining = text.substring(lastIndex);
-  if (remaining) {
+  // Remaining text
+  if (lastIndex < text.length) {
+    const remaining = text.slice(lastIndex);
     const lines = remaining.split('\n');
     lines.forEach((line, i) => {
-      runs.push(new TextRun(line));
-      if (i < lines.length - 1) {
-        runs.push(new TextRun({ break: 1 }));
-      }
+      runs.push(new TextRun({
+        text: line,
+        font: baseFormat.font || 'Calibri',
+        size: baseFormat.size || 22,
+        bold: baseFormat.bold || false,
+        italics: baseFormat.italics || false,
+      }));
+      if (i < lines.length - 1) runs.push(new TextRun({ break: 1 }));
     });
   }
 
   return runs;
 };
 
+// Keep legacy alias so existing call-sites that pass 3 args still compile
+const splitTextWithFootnotes = splitTextWithMarkers;
+
 /**
- * Enhanced P() — creates a paragraph with footnote-aware text splitting.
+ * ★ EO-158e: PWithRefs — paragraph with triple reference system
  */
 const PWithRefs = (
   text: string,
   refMap: Map<string, any>,
-  footnoteIdMap: Map<string, number>
-) => new Paragraph({ children: splitTextWithFootnotes(text, refMap, footnoteIdMap) });
+  footnoteIdMap: Map<string, number>,
+  options: { spacing?: { before?: number; after?: number }; alignment?: any } = {}
+) => new Paragraph({
+  children: splitTextWithMarkers(text, refMap, footnoteIdMap),
+  spacing: options.spacing || { after: 120 },
+  alignment: options.alignment,
+});
 
 /**
- * Builds the Bibliography / "Seznam virov" section at the end of the document.
- * Groups references by chapterPrefix (PA, PI, GO, SO, AC, ER).
+ * ★ EO-158e: buildBibliographySection — with Bookmarks as InternalHyperlink targets
+ * Each reference entry gets Bookmark id="ref_PA_4" so in-text [PA-4] links jump here.
  */
 const buildBibliographySection = (
   references: any[],
   language: string
-): (docx.Paragraph | docx.Table)[] => {
-  const elements: (docx.Paragraph | docx.Table)[] = [];
+): docx.Paragraph[] => {
+  const elements: docx.Paragraph[] = [];
   if (!references || references.length === 0) return elements;
 
   const title = language === 'si' ? 'SEZNAM VIROV' : 'REFERENCES';
+  // H1 with page break already built into H1 helper (pageBreakBefore: true)
   elements.push(H1(title));
 
   const chapterLabels: Record<string, Record<string, string>> = {
-    'PA': { si: 'Analiza problemov', en: 'Problem Analysis' },
-    'PI': { si: 'Projektna ideja', en: 'Project Idea' },
-    'GO': { si: 'Splošni cilji', en: 'General Objectives' },
-    'SO': { si: 'Specifični cilji', en: 'Specific Objectives' },
-    'AC': { si: 'Aktivnosti', en: 'Activities' },
-    'PM': { si: 'Upravljanje projekta', en: 'Project Management' },
-    'ER': { si: 'Pričakovani rezultati', en: 'Expected Results' },
+    'PA': { si: 'Analiza problema',       en: 'Problem Analysis' },
+    'PI': { si: 'Projektna ideja',         en: 'Project Idea' },
+    'GO': { si: 'Splošni cilji',           en: 'General Objectives' },
+    'SO': { si: 'Specifični cilji',        en: 'Specific Objectives' },
+    'OB': { si: 'Cilji',                   en: 'Objectives' },
+    'AC': { si: 'Aktivnosti',              en: 'Activities' },
+    'PM': { si: 'Upravljanje projekta',    en: 'Project Management' },
+    'PC': { si: 'Partnerski konzorcij',    en: 'Partner Consortium' },
+    'WP': { si: 'Delovni paketi',          en: 'Work Packages' },
+    'RI': { si: 'Tveganja',                en: 'Risks' },
+    'ER': { si: 'Pričakovani rezultati',   en: 'Expected Results' },
+    'KE': { si: 'Ključni kazalniki',       en: 'Key Expected Results' },
+    'FI': { si: 'Finance',                 en: 'Finance' },
   };
 
   const grouped: Record<string, any[]> = {};
   references.forEach(ref => {
-    const prefix = ref.chapterPrefix || 'OTHER';
+    const prefix = ref.chapterPrefix || ref.sectionKey || 'OTHER';
     if (!grouped[prefix]) grouped[prefix] = [];
     grouped[prefix].push(ref);
   });
 
-  const order = ['PA', 'PI', 'GO', 'SO', 'AC', 'PM', 'ER', 'OTHER'];
+  const order = ['PA', 'PI', 'GO', 'SO', 'OB', 'AC', 'WP', 'PM', 'PC', 'RI', 'ER', 'KE', 'FI', 'OTHER'];
+  const lang = language === 'si' ? 'si' : 'en';
 
   order.forEach(prefix => {
     const refs = grouped[prefix];
     if (!refs || refs.length === 0) return;
 
-    const lang = language === 'si' ? 'si' : 'en';
     const label = chapterLabels[prefix]?.[lang] || prefix;
     elements.push(H2(label));
 
     refs.sort((a, b) => {
-      const aNum = parseInt(a.inlineMarker?.match(/\d+/)?.[0] || '0');
-      const bNum = parseInt(b.inlineMarker?.match(/\d+/)?.[0] || '0');
+      const aNum = parseInt((a.inlineMarker || '').replace(/\D/g, '')) || 0;
+      const bNum = parseInt((b.inlineMarker || '').replace(/\D/g, '')) || 0;
       return aNum - bNum;
     });
 
     refs.forEach(ref => {
+      const markerKey = ref.inlineMarker || `${prefix}-?`;
+      const anchorId  = `ref_${markerKey.replace(/-/g, '_')}`;
       const children: any[] = [];
 
-      children.push(new TextRun({ text: `${ref.inlineMarker || '—'} `, bold: true }));
+      // ★ Bookmark — target for InternalHyperlink from in-text markers
+      children.push(new Bookmark({
+        id: anchorId,
+        children: [new TextRun({
+          text: `[${markerKey}] `,
+          bold: true,
+          font: 'Calibri',
+          size: 22,
+        })],
+      }));
 
-      if (ref.authors) {
-        children.push(new TextRun({ text: ref.authors + ' ' }));
+      // Author (support both ref.author and ref.authors)
+      const author = ref.author || ref.authors || '';
+      if (author.trim() !== '') {
+        children.push(new TextRun({ text: `${author} `, font: 'Calibri', size: 22 }));
       }
       if (ref.year) {
-        children.push(new TextRun({ text: `(${ref.year}). ` }));
+        children.push(new TextRun({ text: `(${ref.year}). `, font: 'Calibri', size: 22 }));
       }
-      if (ref.title) {
-        children.push(new TextRun({ text: ref.title + '. ', italics: true }));
+      if (ref.title && ref.title.trim() !== '') {
+        children.push(new TextRun({ text: `${ref.title}. `, italics: true, font: 'Calibri', size: 22 }));
       }
-      if (ref.source) {
-        children.push(new TextRun({ text: ref.source + '. ' }));
+      if (ref.source && ref.source.trim() !== '') {
+        children.push(new TextRun({ text: `${ref.source}. `, font: 'Calibri', size: 22 }));
       }
-      if (ref.url) {
+      if (ref.url && ref.url.trim() !== '' && /^https?:\/\//.test(ref.url)) {
         children.push(new ExternalHyperlink({
-          children: [new TextRun({ text: ref.url, style: 'Hyperlink' })],
           link: ref.url,
+          children: [new TextRun({ text: ref.url, style: 'Hyperlink', font: 'Calibri', size: 22 })],
         }));
+      } else if (ref.url && ref.url.trim() !== '') {
+        children.push(new TextRun({ text: ref.url, font: 'Calibri', size: 22 }));
       }
       if (ref.doi && !ref.url?.includes(ref.doi)) {
-        children.push(new TextRun({ text: ` DOI: ${ref.doi}` }));
+        children.push(new TextRun({ text: ` DOI: ${ref.doi}`, font: 'Calibri', size: 22 }));
       }
 
-      elements.push(new Paragraph({ children, spacing: { after: 80 } }));
+      elements.push(new Paragraph({
+        children,
+        spacing: { after: 80 },
+        indent: { left: 360, hanging: 360 },
+      }));
     });
   });
 
@@ -577,11 +644,11 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
   const fundingModel = projectData.fundingModel || 'centralized';
   const lang = language === 'si' ? 'si' : 'en';
 
-  // ★ EO-158: Reference system setup
+  // ★ EO-158e: Triple reference system setup
   const references = projectData.references || [];
   const refMap = buildReferenceMap(references);
   const footnoteIdMap = assignFootnoteIds(references);
-  const footnotesConfig = buildFootnotesConfig(references, footnoteIdMap);
+  const footnotesConfig = buildFootnotesConfig(refMap, footnoteIdMap);
 
   const getRiskColor = (level) => {
       const l = level.toLowerCase();
