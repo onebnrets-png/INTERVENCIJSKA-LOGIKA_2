@@ -1,11 +1,18 @@
 /**
- * services/docxGenerator.ts — v6.7 (2026-03-25)
+ * services/docxGenerator.ts — v6.8 (2026-03-25)
+ *
+ * EO-158g: Definitive fix for triple reference system
+ *   - ROOT CAUSE: inlineMarker stored as '[PA-1]' with brackets
+ *   - FIX: stripBrackets() applied consistently in ALL 4 functions:
+ *     buildReferenceMap, assignFootnoteIds, buildFootnotesConfig, buildBibliographySection
+ *   - Bookmark id now matches InternalHyperlink anchor (both 'ref_PA_1')
+ *   - Bibliography shows [PA-1] not [[PA-1]]
+ *   - FootnoteReferenceRun gets valid fnId from normalized footnoteIdMap
  *
  * EO-158f: Fix marker key mismatch — inlineMarker stored as '[PA-4]' in types.ts
  *   but all lookup functions expected 'PA-4'. Added stripBrackets() helper.
  *   Normalized keys in: buildReferenceMap, assignFootnoteIds, buildBibliographySection.
  *   splitTextWithMarkers and buildFootnotesConfig already used stripped keys — no change.
- *   Added temporary debug logs for verification.
  *
  * EO-158e: Triple reference system (InternalHyperlink + FootnoteReferenceRun + Bibliography)
  * EO-158c: postProcessDocx() — JSZip fix for Word repair dialog
@@ -664,22 +671,19 @@ export const generateDocx = async (projectData, language = 'en', ganttData = nul
   const footnoteIdMap = assignFootnoteIds(references);
   const footnotesConfig = buildFootnotesConfig(refMap, footnoteIdMap);
 
-  // ★ TEMPORARY DEBUG — remove after EO-158f is confirmed working
-  console.log('[DOCX-DEBUG] projectData.references:', references.length, 'items');
+  // ★ EO-158g DEBUG — verify normalization
+  console.log('[EO-158g] references count:', references.length);
   if (references.length > 0) {
-    console.log('[DOCX-DEBUG] First 3 refs (raw inlineMarker):', references.slice(0, 3).map(r => ({
-      inlineMarker: r.inlineMarker,
-      chapterPrefix: r.chapterPrefix,
-      author: r.author,
-      title: (r.title || '').substring(0, 50)
-    })));
-    console.log('[DOCX-DEBUG] refMap size:', refMap.size, '| keys:', [...refMap.keys()].slice(0, 8));
-    console.log('[DOCX-DEBUG] footnoteIdMap size:', footnoteIdMap.size, '| entries:', [...footnoteIdMap.entries()].slice(0, 8));
-    console.log('[DOCX-DEBUG] footnotesConfig keys:', Object.keys(footnotesConfig).slice(0, 8));
+    const sampleRef = references[0];
+    console.log('[EO-158g] sample raw inlineMarker:', JSON.stringify(sampleRef.inlineMarker));
+    console.log('[EO-158g] sample stripped:', JSON.stringify(stripBrackets(sampleRef.inlineMarker)));
+    console.log('[EO-158g] refMap keys (first 5):', [...refMap.keys()].slice(0, 5));
+    console.log('[EO-158g] footnoteIdMap entries (first 5):', [...footnoteIdMap.entries()].slice(0, 5));
+    console.log('[EO-158g] footnotesConfig IDs:', Object.keys(footnotesConfig));
+    console.log('[EO-158g] footnotesConfig count:', Object.keys(footnotesConfig).length);
   } else {
-    console.log('[DOCX-DEBUG] ⚠ NO REFERENCES found in projectData!');
-    console.log('[DOCX-DEBUG] projectData keys:', Object.keys(projectData));
-    console.log('[DOCX-DEBUG] projectData.references raw value:', projectData.references);
+    console.log('[EO-158g] ⚠ NO REFERENCES — projectData.references is empty or undefined');
+    console.log('[EO-158g] projectData keys:', Object.keys(projectData));
   }
 
   const getRiskColor = (level) => {
