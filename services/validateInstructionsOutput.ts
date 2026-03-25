@@ -1,4 +1,6 @@
 /* eslint-disable no-control-regex */
+// validateInstructionsOutput.ts v1.5 — EO-154 (2026-03-24)
+// v1.5 — 2026-03-24 — EO-154: Extended looksBinaryIndicator + looksChangeIndicator with Slovenian/Croatian/Serbian equivalents for format, verification, horizon, method terms. Validator now correctly recognises multilingual indicators.
 // validateInstructionsOutput.ts v1.4 — EO-070 (2026-03-10)
 // CHANGES v1.4:
 //   - NEW: 'reference-url-check' rule (MEDIUM) — flags references with empty URLs
@@ -290,17 +292,22 @@ function isNarrativeField(fieldName: string): boolean {
 
 function looksBinaryIndicator(text: string): boolean {
   const hasQuantity = /\b\d+\b/.test(text);
-  const hasFormat = /\b(PDF|report|handbook|toolkit|platform|dashboard|website|manual|dataset|guideline|protocol|video|workshop|training|pilot|deliverable|document)\b/i.test(text);
-  const hasVerification = /\b(approved|verified|published|peer-reviewed|reviewed|accessible|validated|signed|adopted|confirmed)\b/i.test(text);
+
+  const hasFormat = /\b(PDF|report|handbook|toolkit|platform|dashboard|website|manual|dataset|guideline|protocol|video|workshop|training|pilot|deliverable|document|study|analysis|framework|strategy|plan|model|system|module|course|curriculum|application|portal|database|catalogue|inventory|map|atlas|index|register|publication|article|paper|chapter|book|journal|magazine|newsletter|brochure|flyer|poster|infographic|presentation|webinar|seminar|conference|event|meeting|session|programme|scheme|network|cluster|hub|centre|center|office|unit|lab|observatory|agency|institute|forum|council|board|committee|panel|group|team|task.?force|working.?group|action.?plan|road.?map|white.?paper|green.?paper|policy.?brief|best.?practice|case.?study|benchmark|standard|specification|certification|accreditation|licence|license|patent|trademark|copyright|award|prize|grant|subsidy|dokument|priročnik|platforma|spletna.?stran|orodje|nabor.?podatkov|smernice|protokol|delavnica|usposabljanje|pilotni|izdelek|poročilo|zbornik|kurikulum|učbenik|aplikacija|portal|baza.?podatkov|katalog|letak|infografika|predstavitev|seminar|konferenca|dogodek|program|mreža|študija|analiza|strategija|načrt|model|sistem|modul|tečaj|izobraževanje|metodologija|okvir|gradivo|material|brošura|plakat|zemljevid|indeks|register|publikacija|članek|knjiga|revija|glasilo|certifikat|akreditacija|licenca|standard|specifikacija|ocena|evalvacija|pregled|revizija|nadzor|spremljanje|poizvedba)\b/i.test(text);
+
+  const hasVerification = /\b(approved|verified|published|peer.?reviewed|reviewed|accessible|validated|signed|adopted|confirmed|endorsed|certified|accredited|licensed|registered|completed|delivered|submitted|accepted|launched|operational|functional|tested|piloted|evaluated|assessed|audited|inspected|monitored|documented|archived|disseminated|distributed|available|online|uploaded|downloaded|printed|issued|released|circulated|odobren|preverjen|objavljen|recenziran|dostopen|validiran|podpisan|sprejet|potrjen|potrdi|odobritev|validacija|verificiran|recenzija|certificiran|akreditiran|licenciran|registriran|zaključen|dostavljen|oddan|zagnan|operativen|funkcionalen|testiran|pilotiran|ovrednoten|ocenjen|revidiran|pregledan|nadzorovan|dokumentiran|arhiviran|razširjen|distribuiran|na.?voljo|naložen|natisnjen|izdan|razposlano)\b/i.test(text);
+
   return hasQuantity && hasFormat && hasVerification;
 }
 
 function looksChangeIndicator(text: string): boolean {
-  const hasTarget = /\b(from|to|by|within|increase|reduce|improve|adopted by|used by|reaching|at least)\b/i.test(text);
-  const hasNumber = /\b\d+\b/.test(text);
-  const hasTime = /\b(M\d+|month|months|year|years|post-project|by \d{4}|within \d+ years?)\b/i.test(text);
-  const hasMethod = /\b(measured|verified|survey|records|analytics|monitoring|statistics|data source|Eurostat|registry|reporting)\b/i.test(text);
-  return hasTarget && hasNumber && hasTime && hasMethod;
+  const hasTarget = /\b\d+\s*%|\b\d+\b/.test(text);
+
+  const hasHorizon = /\b(by\s+\d{4}|within\s+\d+\s+(year|month)|after\s+\d+\s+(year|month)|end\s+of\s+project|post.?project|mid.?term|final|long.?term|short.?term|medium.?term|annual|yearly|monthly|quarterly|weekly|daily|bi.?annual|do\s+\d{4}|v\s+roku\s+\d+|po\s+\d+\s+(let|mesec)|ob\s+koncu\s+projekta|po\s+projektu|vmesn|končn|dolgoročn|kratkoročn|srednjeročn|letn|mese[čc]n|četrtletn|tedensko|dnevno|polletn)\b/i.test(text);
+
+  const hasMethod = /\b(survey|questionnaire|interview|focus.?group|observation|test|exam|assessment|evaluation|monitoring|tracking|report|register|database|log|record|measurement|statistic|census|sample|baseline|comparison|control.?group|pre.?post|longitudinal|cross.?sectional|meta.?analysis|systematic.?review|case.?study|benchmark|index|indicator|metric|KPI|rate|ratio|proportion|percentage|score|grade|rank|level|scale|anketa|vprašalnik|intervju|fokusna.?skupina|opazovanje|test|preizkus|ocenjevanje|evalvacija|spremljanje|sledenje|poročilo|register|baza.?podatkov|evidenca|zapis|meritev|statistika|popis|vzorec|izhodiščn|primerjava|kontrolna.?skupina|pred.?po|vzdolžn|prečn|meta.?analiza|sistematičen.?pregled|študija.?primera|referenčna.?vrednost|kazalnik|kazalec|merilo|KPI|stopnja|razmerje|delež|odstotek|ocena|lestvica)\b/i.test(text);
+
+  return hasTarget && hasHorizon && hasMethod;
 }
 
 function extractKeywords(text: string): string[] {

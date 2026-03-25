@@ -1,8 +1,10 @@
 // services/aiProvider.ts
 // ═══════════════════════════════════════════════════════════════
-// Universal AI Provider Abstraction Layer – v6.21 (2026-03-24)
+// Universal AI Provider Abstraction Layer – v6.22 (2026-03-24)
 // ═══════════════════════════════════════════════════════════════ 
 // CHANGELOG:
+// v6.22 — 2026-03-24 — EO-155: Increased maxOutputTokens from 8192 to 16384 to prevent KERs/Activities JSON truncation on long composite sections.
+//                               EO-157: Filter hallucinated authors (Vertex AI Search, Google, Gemini) from Gemini grounding chunk titles.
 // v6.21 — 2026-03-24 — EO-148: Added forceGoogleSearch?: boolean to AIGenerateOptions.
 //         Allows standalone repair calls (repairBrokenReferenceUrls) to force google_search
 //         grounding without relying on storageService.getWebSearchEnabled() or sectionKey eligibility.
@@ -429,7 +431,7 @@ const SECTION_MAX_TOKENS: Record<string, number> = {
   outputs:             8192,    // ★ EO-121: raised from 4096 — 5-8 outputs × 5 sentences + indicators truncate at 4K
   outcomes:            8192,    // ★ EO-121: raised from 4096 — 4-6 outcomes × 5 sentences + indicators truncate at 4K
   impacts:             8192,    // ★ EO-121: raised from 4096 — 3-5 impacts × 5 sentences + KIP labels + indicators truncate at 4K
-  kers:                8192,    // ★ EO-121: raised from 4096 — 4-6 KERs × 5 sentences + exploitationStrategy truncate at 4K
+  kers:                16384,   // ★ EO-155: raised from 8192 — KERs with 9+ references and long descriptions truncate at 8K
   sustainability:      4096,    // EO-081: NEW
   dissemination:       4096,    // EO-081: NEW
   targetGroups:        4096,    // EO-081: NEW
@@ -832,9 +834,22 @@ generateConfig.maxOutputTokens = getMaxTokensForSection(options.sectionKey);
       if (grounding && grounding.groundingChunks && grounding.groundingChunks.length > 0) {
         console.log('[aiProvider] v5.8 Gemini GROUNDING CONFIRMED — ' + grounding.groundingChunks.length + ' web sources used:');
         // ★ v6.6 EO-080: Tag grounding URLs with [VERIFIED_URL] for downstream reference processing
+        // EO-157: Hallucinated author constants
+        var _EO157_HALLUCINATED_AUTHORS = [
+          'vertex ai search', 'vertexaisearch', 'google search',
+          'google scholar', 'google', 'gemini', 'ai search', 'grounding api',
+        ];
         var verifiedUrlTags: string[] = [];
         grounding.groundingChunks.forEach(function(chunk: any, i: number) {
           if (chunk.web) {
+            // EO-157: Clean hallucinated author from chunk title if present
+            if (chunk.web.title) {
+              var _titleLower = chunk.web.title.toLowerCase().trim();
+              if (_EO157_HALLUCINATED_AUTHORS.some(function(h: string) { return _titleLower === h || _titleLower.includes(h); })) {
+                console.warn('[EO-157] Hallucinated chunk title detected: "' + chunk.web.title + '" — clearing');
+                chunk.web.title = '';
+              }
+            }
             console.log('  [' + i + '] ' + (chunk.web.title || 'untitled') + ' — ' + (chunk.web.uri || 'no URL'));
             if (chunk.web.uri) {
               verifiedUrlTags.push('[VERIFIED_URL: ' + chunk.web.uri + ']');
