@@ -2,6 +2,7 @@
 // ═══════════════════════════════════════════════════════════════
 // Utility functions: deep-setter, validation, project factory,
 // completion checks, scheduling logic, language detection.
+// v5.2 — 2026-03-26 — EO-160: Reset _usage/_projectUsage/_generationMeta/_costRecords in safeMerge() on JSON import.
 // v5.1 — 2026-03-01 — CHANGES:
 //   ★ v5.1: recalculateProjectSchedule() — POST-PROCESSING TEMPORAL CLAMP
 //     → After dependency propagation, clamp ALL task dates to project envelope
@@ -201,6 +202,31 @@ export const safeMerge = (importedData: any): any => {
   if (!Array.isArray(merged.partners)) merged.partners = [];
   if (!merged.fundingModel) merged.fundingModel = 'centralized';
   if (!Array.isArray(merged.references)) merged.references = [];  // ★ EO-069
+
+  // ★ EO-160: Reset usage/cost data on JSON import
+  // Generation costs belong to the original author, not the importing user.
+  if (merged._usage) {
+    console.log('[EO-160] Resetting _usage (chapter costs) on import');
+    merged._usage = {};
+  }
+  if (merged._projectUsage) {
+    console.log('[EO-160] Resetting _projectUsage (project totals) on import');
+    merged._projectUsage = {
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCalls: 0,
+      totalCostEUR: 0,
+      chapters: {},
+    };
+  }
+  if (merged._generationMeta) {
+    console.log('[EO-160] Resetting _generationMeta on import');
+    merged._generationMeta = {};
+  }
+  if (merged._costRecords) {
+    console.log('[EO-160] Resetting _costRecords on import');
+    merged._costRecords = [];
+  }
 
   return merged;
 };

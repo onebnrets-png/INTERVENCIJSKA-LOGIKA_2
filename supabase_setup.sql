@@ -694,4 +694,16 @@ VALUES (
   '2026-03-26'
 ) ON CONFLICT DO NOTHING;
 
+-- ★ EO-160: Changelog entry
+INSERT INTO app_changelog (code, version, type, title, description, files_changed, released_at)
+VALUES (
+  'EO-160',
+  '1.11.1',
+  'FIX',
+  'Reset usage/cost data on JSON project import',
+  'When importing a project via JSON export, all generation cost tracking fields (_usage, _projectUsage, _generationMeta, _costRecords) are now reset to zero/empty. This prevents the importing user from seeing the original author''s API costs. Project content (text, references, partners) is fully preserved.',
+  ARRAY['utils.ts'],
+  '2026-03-26'
+) ON CONFLICT DO NOTHING;
+
 SELECT '✅ EURO-OFFICE supabase_setup.sql v5.1 (EO-159) complete' as status;
