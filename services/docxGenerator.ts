@@ -1,5 +1,7 @@
 /**
- * services/docxGenerator.ts — v6.8 (2026-03-25)
+ * services/docxGenerator.ts — v6.9 (2026-03-26)
+ *
+ * EO-159 BUG 14: extractMarkerNumber() for bibliography sort (handles [XX-N] prefix format).
  *
  * EO-158g: Definitive fix for triple reference system
  *   - ROOT CAUSE: inlineMarker stored as '[PA-1]' with brackets
@@ -33,6 +35,7 @@ import {
     DECENTRALIZED_DIRECT_COSTS,
     DECENTRALIZED_INDIRECT_COSTS
 } from '../types.ts';
+import { extractMarkerNumber } from '../utils/referencePrefixMap.ts'; // ★ EO-159 BUG 14
 
 const safeArray = (v: any): any[] => {
   if (Array.isArray(v)) return v;
@@ -424,8 +427,8 @@ const buildBibliographySection = (
     elements.push(H2(label));
 
     refs.sort((a, b) => {
-      const aNum = parseInt((a.inlineMarker || '').replace(/\D/g, '')) || 0;
-      const bNum = parseInt((b.inlineMarker || '').replace(/\D/g, '')) || 0;
+      const aNum = extractMarkerNumber(a.inlineMarker || '');  // ★ EO-159 BUG 14
+      const bNum = extractMarkerNumber(b.inlineMarker || '');  // ★ EO-159 BUG 14
       return aNum - bNum;
     });
 

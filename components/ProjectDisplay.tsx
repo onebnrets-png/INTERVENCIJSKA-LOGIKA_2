@@ -1,5 +1,8 @@
 // components/ProjectDisplay.tsx
 // ═══════════════════════════════════════════════════════════════
+// v7.38 — 2026-03-26 — EO-159: BUG5 refs OFF/ON stale lifecycle in SectionGenerateWithToggle.
+//         BUG24 extractMarkerNumber in FieldCitationsPreview sort.
+//         BUG25 APA format fallback in findReferenceByInlineMarker.
 // v7.36 — 2026-03-24 — EO-153c: Fixed renderGenericResults + renderObjectives refsEnabled lookup.
 //         Was using raw sectionKey (outputs/outcomes/impacts/generalObjectives/specificObjectives)
 //         instead of getChapterForSection() — toggle was ignored for these sections.
@@ -93,6 +96,7 @@ import ReferenceToggle from './ReferenceToggle.tsx'; // EO-130
 import { DEFAULT_REFS_ENABLED } from '../services/Instructions.ts'; // EO-130
 import GenerationProgressModal from './GenerationProgressModal.tsx'; // EO-137
 import { useResponsive } from '../hooks/useResponsive.ts'; // EO-140
+import { extractMarkerNumber } from '../utils/referencePrefixMap.ts'; // ★ EO-159 BUG 24+25
 
 // EO-130f: Chapter mapping for reference toggle — determines which chapter a sub-section belongs to.
 // MUST be kept in sync with the identical function in hooks/useGeneration.ts.
@@ -208,6 +212,18 @@ const findReferenceByInlineMarker = (
     // EO-141: Match by full inlineMarker string first (handles [PA-1], [SO-2] etc)
     const byMarkerStr = deduped.find((ref) => ref.inlineMarker === markerStr);
     if (byMarkerStr) return byMarkerStr;
+
+    // ★ EO-159 BUG 25: Handle APA format markers in legacy data e.g. "(Smith, 2024)"
+    if (markerStr && markerStr.startsWith('(') && markerStr.endsWith(')')) {
+        const apaMatch = markerStr.match(/\((.+?),\s*(\d{4})\)/);
+        if (apaMatch) {
+            const [, authFragment, year] = apaMatch;
+            const found = deduped.find((r) =>
+                r.authors?.includes(authFragment) && String(r.year) === year
+            );
+            if (found) return found;
+        }
+    }
 
     // Fallback: match by number only (legacy [N] format support)
     const num = (() => {
@@ -363,8 +379,44 @@ const ChapterCostBadge = ({ chapterKey, projectData, language }: { chapterKey: s
 const SectionGenerateWithToggle = ({ sectionKey, projectData, onUpdateData, onGenerate, isLoading, title, text, missingApiKey, language }) => {
   const refsEnabled = projectData?._settings?.referencesEnabled?.[sectionKey] ?? DEFAULT_REFS_ENABLED[sectionKey] ?? false;
   const handleToggle = (sk: string, val: boolean) => {
-    const cur = projectData?._settings?.referencesEnabled || {};
     onUpdateData(['_settings', 'referencesEnabled', sk], val);
+
+    // ★ EO-159 BUG 5: Refs OFF → mark existing chapter refs as stale
+    if (!val) {
+      const currentRefs = Array.isArray(projectData?.references) ? projectData.references : [];
+      const chapterPrefix = projectData?._settings?.referencesEnabled !== undefined
+        ? (() => {
+            const prefixMap: Record<string, string> = {
+              problemAnalysis: 'PA', projectIdea: 'PI', generalObjectives: 'GO',
+              specificObjectives: 'SO', activities: 'AC', projectManagement: 'PM',
+              risks: 'RI', outputs: 'ER', outcomes: 'ER', impacts: 'ER', kers: 'KE',
+            };
+            return prefixMap[sk] || 'REF';
+          })()
+        : 'REF';
+      const staleRefs = currentRefs.filter((r: any) => r.chapterPrefix === chapterPrefix || r.sectionKey === sk);
+      if (staleRefs.length > 0) {
+        const updatedRefs = currentRefs.map((r: any) =>
+          (r.chapterPrefix === chapterPrefix || r.sectionKey === sk)
+            ? { ...r, verificationStatus: 'stale' }
+            : r
+        );
+        onUpdateData(['references'], updatedRefs);
+        console.log('[EO-159 BUG5] Marked ' + staleRefs.length + ' refs as stale for chapter "' + sk + '"');
+      }
+    }
+
+    // ★ EO-159 BUG 5: Refs ON → re-verify stale refs for this chapter
+    if (val) {
+      const currentRefs = Array.isArray(projectData?.references) ? projectData.references : [];
+      const stale = currentRefs.filter((r: any) => r.verificationStatus === 'stale' && r.sectionKey === sk);
+      if (stale.length > 0) {
+        console.log('[EO-159 BUG5] Re-verifying ' + stale.length + ' stale refs for "' + sk + '"');
+        import('../services/referenceVerificationService.ts').then((mod: any) => {
+          mod.verifyReferencesBatch(stale).catch(() => {});
+        });
+      }
+    }
   };
   return (
     <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -405,10 +457,10 @@ const FieldCitationsPreview = ({ text, references, sectionKey, language }: { tex
 
     if (citedRefs.length === 0) return null;
 
-    // Sort by numeric part
+    // Sort by numeric part — ★ EO-159 BUG 24: use extractMarkerNumber (handles [XX-N] prefix)
     citedRefs.sort((a, b) => {
-        const aNum = parseInt(a.markerStr.replace(/\D/g, ''), 10) || 0;
-        const bNum = parseInt(b.markerStr.replace(/\D/g, ''), 10) || 0;
+        const aNum = extractMarkerNumber(a.markerStr);
+        const bNum = extractMarkerNumber(b.markerStr);
         return aNum - bNum;
     });
 

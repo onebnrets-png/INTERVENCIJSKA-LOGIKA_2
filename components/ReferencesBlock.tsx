@@ -1,5 +1,6 @@
 // components/ReferencesBlock.tsx
 // ═══════════════════════════════════════════════════════════════
+// v1.15 — 2026-03-26 — EO-159 BUG9: normalizeMarker APA format passthrough.
 // v1.14 — 2026-03-24 — EO-150c: Display full prefixed marker [ER-1] instead of stripped [1].
 // v1.13 — 2026-03-24 — EO-147d: Unified single reference button
 // v1.11 — 2026-03-23 — EO-141: normalizeMarker handles [XX-N] prefix format ([PA-1],[PI-2]).
@@ -59,6 +60,11 @@ export const normalizeMarker = (inlineMarker?: string | number): number | null =
   if (typeof inlineMarker === 'number') return Number.isFinite(inlineMarker) ? inlineMarker : null;
 
   const str = String(inlineMarker).trim();
+
+  // ★ EO-159 BUG 9: Handle APA format from legacy AddReferenceModal — return null (sort last)
+  if (str.startsWith('(') && str.endsWith(')')) {
+    return null;
+  }
 
   // EO-141: New prefixed format [PA-1], [PI-3], [GO-12] etc.
   const prefixMatch = str.match(/\[([A-Z]{2,3})-(\d+)\]\s*$/);

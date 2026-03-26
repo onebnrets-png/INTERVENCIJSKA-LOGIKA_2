@@ -1,5 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 // services/geminiService.ts
+// v7.30 — 2026-03-26 — EO-159: BUG12 object-root schema for objectives/results/risks/kers.
+//         BUG18: _referenceEntrySchema requires year+inlineMarker. BUG28: conditional getReferencesRequirement.
 // v7.29 — 2026-03-23 — EO-141: Per-chapter citation prefix. _GS_CHAPTER_PREFIX + _gsGetPrefix + _buildCitationEnforcement(prefix).
 //         INLINE_CITATION_FORMAT_ENFORCEMENT now dynamic per sectionKey prefix. Prompt uses [PA-N],[PI-N] etc.
 // v7.28 — 2026-03-20 — EO-138: generateSectionContent captures _usage from generateContent result and attaches to parsed for cost tracking in useGeneration.
@@ -77,6 +79,7 @@ import {
 } from './Instructions.ts';
 
 import { detectProjectLanguage as detectLanguage, detectTextLanguage } from '../utils.ts';
+import { getChapterPrefix as _getSharedChapterPrefix } from '../utils/referencePrefixMap.ts';
 
 import {
   generateContent,
@@ -608,7 +611,8 @@ const _referenceEntrySchema = {
     doi: { type: Type.STRING },
     sectionKey: { type: Type.STRING },
   },
-  required: ['authors', 'title'],
+  // ★ EO-159 BUG 18: Require critical fields to prevent incomplete refs
+  required: ['authors', 'title', 'year', 'inlineMarker'],
 };
 
 const _referencesArraySchema = {
@@ -662,17 +666,25 @@ const schemas: Record<string, any> = {
     required: ['projectTitle', 'projectAcronym', 'mainAim', 'stateOfTheArt', 'proposedSolution', 'policies', 'readinessLevels']
   },
 
+  // ★ EO-159 BUG 12: Wrap objectives in object to allow _references sibling
   objectives: {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        title: { type: Type.STRING },
-        description: { type: Type.STRING },
-        indicator: { type: Type.STRING }
+    type: Type.OBJECT,
+    properties: {
+      items: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING, description: 'Objective title' },
+            description: { type: Type.STRING, description: 'Objective description with in-text citations' },
+            indicator: { type: Type.STRING, description: 'Measurable indicator' },
+          },
+          required: ['title', 'description', 'indicator'],
+        },
       },
-      required: ['title', 'description', 'indicator']
-    }
+      _references: _referencesArraySchema,
+    },
+    required: ['items'],
   },
 
   projectManagement: {
@@ -756,48 +768,72 @@ const schemas: Record<string, any> = {
     }
   },
 
+  // ★ EO-159 BUG 12: Wrap results in object to allow _references sibling
   results: {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        title: { type: Type.STRING },
-        description: { type: Type.STRING },
-        indicator: { type: Type.STRING }
+    type: Type.OBJECT,
+    properties: {
+      items: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            description: { type: Type.STRING },
+            indicator: { type: Type.STRING }
+          },
+          required: ['title', 'description', 'indicator']
+        },
       },
-      required: ['title', 'description', 'indicator']
-    }
+      _references: _referencesArraySchema,
+    },
+    required: ['items'],
   },
 
+  // ★ EO-159 BUG 12: Wrap risks in object to allow _references sibling
   risks: {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        id: { type: Type.STRING },
-        category: { type: Type.STRING, enum: ['technical', 'social', 'economic', 'environmental'] },
-        title: { type: Type.STRING },
-        description: { type: Type.STRING },
-        likelihood: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
-        impact: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
-        mitigation: { type: Type.STRING }
+    type: Type.OBJECT,
+    properties: {
+      items: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            id: { type: Type.STRING },
+            category: { type: Type.STRING, enum: ['technical', 'social', 'economic', 'environmental'] },
+            title: { type: Type.STRING },
+            description: { type: Type.STRING },
+            likelihood: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
+            impact: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
+            mitigation: { type: Type.STRING }
+          },
+          required: ['id', 'category', 'title', 'description', 'likelihood', 'impact', 'mitigation']
+        },
       },
-      required: ['id', 'category', 'title', 'description', 'likelihood', 'impact', 'mitigation']
-    }
+      _references: _referencesArraySchema,
+    },
+    required: ['items'],
   },
 
+  // ★ EO-159 BUG 12: Wrap kers in object to allow _references sibling
   kers: {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        id: { type: Type.STRING },
-        title: { type: Type.STRING },
-        description: { type: Type.STRING },
-        exploitationStrategy: { type: Type.STRING }
+    type: Type.OBJECT,
+    properties: {
+      items: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            id: { type: Type.STRING },
+            title: { type: Type.STRING },
+            description: { type: Type.STRING },
+            exploitationStrategy: { type: Type.STRING }
+          },
+          required: ['id', 'title', 'description', 'exploitationStrategy']
+        },
       },
-      required: ['id', 'title', 'description', 'exploitationStrategy']
-    }
+      _references: _referencesArraySchema,
+    },
+    required: ['items'],
   },
 
   coreProblem: problemNodeSchema,
@@ -1294,7 +1330,17 @@ const getPromptAndSchemaForSection = (
     ACADEMIC_RIGOR_SECTIONS.has(sectionKey)
       ? `\nFINAL CITATION FORMAT REMINDER:\nUse short inline attribution + marker: (Author/Institution, Year) [${_gsGetPrefix(sectionKey)}-N]. Bare [N] without prefix is invalid. Start at [${_gsGetPrefix(sectionKey)}-1].\n`
       : '',
-    getReferencesRequirement(),
+    // ★ EO-159 BUG 28: Only inject full reference requirement for schemas that support _references
+    (() => {
+      const schemaSupportsRefs = ['problemAnalysis', 'projectIdea', 'projectManagement',
+        'mainAim', 'stateOfTheArt', 'proposedSolution'].includes(sectionKey);
+      const wrappedSchemaSupportsRefs = ['generalObjectives', 'specificObjectives',
+        'outputs', 'outcomes', 'impacts', 'kers', 'risks'].includes(sectionKey);
+      if (schemaSupportsRefs || wrappedSchemaSupportsRefs) {
+        return getReferencesRequirement();
+      }
+      return `Use in-text citations in format (Author, Year) where relevant.`;
+    })(),
     (sectionKey === 'projectIdea' || sectionKey === 'stateOfTheArt' || sectionKey === 'proposedSolution')
       ? '\n★★★ REFERENCE QUALITY REQUIREMENT ★★★\nReturn between 3 and 10 references in the _references array — ONLY high-quality, verifiable sources.\nEVERY reference MUST have ALL of these fields filled with REAL data:\n- authors (full author names — NEVER empty)\n- year (publication year)\n- title (exact publication title)\n- source (journal, institution, or publisher)\n- url (real, working URL — preferably https://doi.org/... format)\n- doi (if available)\n- inlineMarker (matching the [N] citation in the text)\nDo NOT return references with empty authors or empty titles.\nDo NOT fabricate references — only cite sources you can verify.\nPrefer recent publications (2018–2025) from peer-reviewed journals, EU institutions, or WHO/UN agencies.\nFEWER high-quality references are BETTER than many incomplete ones.\n★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★\n'
       : '',

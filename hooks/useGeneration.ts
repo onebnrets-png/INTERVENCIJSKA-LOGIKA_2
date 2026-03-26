@@ -1,6 +1,10 @@
 // hooks/useGeneration.ts
 // ═══════════════════════════════════════════════════════════════ 
 // AI content generation — sections, fields, summaries.
+// v7.71 — 2026-03-26 — EO-159: BUG4 global text marker sweep. BUG6 chapterPrefix filter in STEP1.
+//         BUG10 APA inlineMarker stripping. BUG12 object-root unwrap for objectives/kers/results/risks.
+//         BUG13 ref.authors typo fix. BUG15 generalized auto-repair all sections. BUG20 [XX-N] in injectReferencesToText.
+//         BUG22 dynamic sectionKey in enrichReferencesWithAI. BUG29 approvedSources persist in composites.
 // v7.70 — 2026-03-24 — EO-156: Clear isLoading on cancel to prevent old modal flash. setIsLoading(false) called after setGenerationProgress in cancelGeneration.
 //         EO-157: Hallucinated author filter in _convertAiRefsToReferences (Vertex AI Search, Google Search, Gemini, etc.).
 // v7.69 — 2026-03-24 — EO-151: Fix progress modal lost after cancel+restart (finally block sectionKey guard)
@@ -214,9 +218,10 @@ import {
   generateObjectFill,
   generatePartnerAllocations,
 } from '../services/geminiService.ts';
-import { getRateLimitStatus, ModelOverloadedError, getFallbackModel, getProviderConfig } from '../services/aiProvider.ts';
+import { getRateLimitStatus, ModelOverloadedError, getFallbackModel, getProviderConfig, scrubHallucinatedReferences } from '../services/aiProvider.ts'; // ★ EO-159 BUG1
 import { generateSummaryDocx } from '../services/docxGenerator.ts';
 import { recalculateProjectSchedule, downloadBlob, set } from '../utils.ts';
+import { extractMarkerNumber, normalizeUrlForMatch } from '../utils/referencePrefixMap.ts'; // ★ EO-159
 import { TEXT } from '../locales.ts';
 import { storageService } from '../services/storageService.ts';
 import { smartTranslateProject } from '../services/translationDiffService.ts';
@@ -566,8 +571,13 @@ function _runFullReferencePipeline(
     if (_sectionChildKeys[_scKey].indexOf(sectionKey) >= 0) { _topSectionKey = _scKey; break; }
   }
   var _keysToClean = [sectionKey]; // Only clean refs for THIS section, not the whole parent
+  // ★ EO-159 BUG 6: Filter by chapterPrefix when available
+  var _currentChapterPrefixForClean = _getChapterPrefix(sectionKey);
   var _cleanedRefs = _currentRefs.filter(function(r: any) {
     if (!r.sectionKey) return true;
+    if (_currentChapterPrefixForClean && r.chapterPrefix) {
+      return r.chapterPrefix !== _currentChapterPrefixForClean;
+    }
     return _keysToClean.indexOf(r.sectionKey) < 0;
   });
   var _removedCount = _currentRefs.length - _cleanedRefs.length;
@@ -595,6 +605,18 @@ function _runFullReferencePipeline(
         console.log('[EO-100] Extracted ' + _rawAiRefs.length + ' refs from nested "' + _nestedKeys[_nki] + '"');
         break;
       }
+    }
+  }
+
+  // ★ EO-159 BUG 12: Unwrap object-root schema { items: [...], _references: [...] }
+  // Handles objectives, kers, results, risks after BUG 12 schema change
+  if (generatedData && typeof generatedData === 'object' && !Array.isArray(generatedData)) {
+    if (generatedData.items && Array.isArray(generatedData.items)) {
+      if (generatedData._references && Array.isArray(generatedData._references)) {
+        _rawAiRefs = generatedData._references;
+        console.log('[EO-159 BUG12] Extracted ' + _rawAiRefs.length + ' refs from object-root wrapper for "' + sectionKey + '"');
+      }
+      generatedData = generatedData.items;  // Unwrap to array for downstream processing
     }
   }
 
@@ -1136,6 +1158,51 @@ const _renumberAllReferences = (data: any): void => {
     }
     data.references = refs;
     console.log('[EO-141] ✅ Renumbered ' + refs.length + ' references across ' + Object.keys(byChapter).length + ' chapters');
+
+    // ★ EO-159 BUG 4: Global text marker sweep — sync all content fields after renumber
+    const _bug4MarkerMapping: Record<string, string> = {};
+    markerMap.forEach((entry) => {
+      if (entry.old && entry.new && entry.old !== entry.new) {
+        _bug4MarkerMapping[entry.old] = entry.new;
+      }
+    });
+
+    if (Object.keys(_bug4MarkerMapping).length > 0) {
+      console.log('[EO-159 BUG4] Sweeping text markers across all content fields:', _bug4MarkerMapping);
+
+      const _bug4ReplaceMarkers = (text: string): string => {
+        if (!text || typeof text !== 'string') return text;
+        let result = text;
+        const sorted = Object.keys(_bug4MarkerMapping).sort((a, b) => b.length - a.length);
+        for (const old of sorted) {
+          const escaped = old.replace(/[[\]]/g, '\\$&');
+          result = result.replace(new RegExp(escaped, 'g'), _bug4MarkerMapping[old]);
+        }
+        return result;
+      };
+
+      const _bug4SweepObj = (obj: any): any => {
+        if (!obj) return obj;
+        if (typeof obj === 'string') return _bug4ReplaceMarkers(obj);
+        if (Array.isArray(obj)) return obj.map(_bug4SweepObj);
+        if (typeof obj === 'object') {
+          const r = { ...obj };
+          for (const k of Object.keys(r)) {
+            if (typeof r[k] === 'string') r[k] = _bug4ReplaceMarkers(r[k]);
+            else if (typeof r[k] === 'object') r[k] = _bug4SweepObj(r[k]);
+          }
+          return r;
+        }
+        return obj;
+      };
+
+      const _bug4Fields = ['problemAnalysis', 'projectIdea', 'generalObjectives', 'specificObjectives',
+        'activities', 'risks', 'outputs', 'outcomes', 'impacts', 'kers', 'projectManagement'];
+      for (const f of _bug4Fields) {
+        if (data[f]) data[f] = _bug4SweepObj(data[f]);
+      }
+      console.log('[EO-159 BUG4] Text sweep complete');
+    }
   } catch (e) {
     console.error('[EO-141] ❌ Renumbering JSON.parse failed — keeping original order', e);
   }
@@ -1166,6 +1233,35 @@ function _verifyUrlsAfterSave(
     const verifiedCount = verResults.filter((v: any) => v.urlVerified).length;
     const brokenCount = verResults.filter((v: any) => v.verificationStatus === 'broken' || v.verificationStatus === 'not-found').length;
     console.log('[EO-131] URL verification complete: ' + verifiedCount + ' verified, ' + brokenCount + ' broken, ' + verResults.length + ' total');
+
+    // ★ EO-159 BUG 15: Auto-repair broken URLs for ALL sections (not just Activities/ER)
+    const brokenRefs = verResults.filter((r: any) =>
+      r.verificationStatus === 'broken' || r.verificationStatus === 'not-found' ||
+      (!r.url || r.url.trim() === '')
+    );
+    if (brokenRefs.length > 0) {
+      console.log('[EO-159 BUG15] ' + brokenRefs.length + ' broken refs detected, triggering auto-repair');
+      import('../hooks/useGeneration.ts').catch(() => {}).finally(() => {});
+      // Use repairBrokenReferenceUrls directly (it's in scope as a module-level function)
+      repairBrokenReferenceUrls(brokenRefs, null, language).then(function(repaired: any[]) {
+        if (!repaired || repaired.length === 0) return;
+        setProjectDataFn(function(prev: any) {
+          if (!Array.isArray(prev.references)) return prev;
+          const currentRefs = [...prev.references];
+          repaired.forEach((rep: any) => {
+            const idx = currentRefs.findIndex((r: any) => r.id === rep.id); // ★ BUG 17: match by id
+            if (idx >= 0) currentRefs[idx] = { ...currentRefs[idx], ...rep };
+          });
+          const repairedData = { ...prev, references: currentRefs };
+          if (currentProjectId && storageServiceRef) {
+            storageServiceRef.saveProject(repairedData, language, currentProjectId)
+              .catch((e: any) => console.warn('[EO-159 BUG15] Save after repair failed (non-fatal):', e?.message));
+          }
+          console.log('[EO-159 BUG15] Repaired ' + repaired.length + ' refs');
+          return repairedData;
+        });
+      }).catch((e: any) => console.warn('[EO-159 BUG15] Auto-repair failed:', e));
+    }
 
     // Update ONLY urlVerified + verificationStatus + verificationMethod — NEVER inlineMarker or other fields
     setProjectDataFn(function(prev: any) {
@@ -1227,6 +1323,8 @@ function _extractAndRemoveReferences(generatedData: any, sectionKey: string): { 
 // ★ v7.17 EO-070: Convert AI _references entries to full Reference objects
 // ★ EO-141: Uses per-chapter prefix format [XX-N] instead of global sequential [N]
 function _convertAiRefsToReferences(aiRefs: any[], sectionKey: string, existingRefs: any[]): any[] {
+  // ★ EO-159 BUG 1: Scrub hallucinated URLs/DOIs before any further processing
+  aiRefs = scrubHallucinatedReferences(aiRefs);
   var result: any[] = [];
   var _cvPrefix = _getChapterPrefix(sectionKey);
   // Count existing refs for this chapter prefix to determine next number
@@ -1244,6 +1342,32 @@ function _convertAiRefsToReferences(aiRefs: any[], sectionKey: string, existingR
     if (ar.authors && _EO157_HALLUCINATED_AUTHORS.some(function(h: string) { return ar.authors.toLowerCase().includes(h); })) {
       console.warn('[EO-157] Hallucinated author cleared: "' + ar.authors + '"');
       ar.authors = '';
+    }
+    // ★ EO-159 BUG 10: Ensure inlineMarker is [XX-N] format only
+    if (ar.inlineMarker) {
+      // Strip APA format: "(Šoltes, 2024)" → empty
+      if (ar.inlineMarker.startsWith('(') && ar.inlineMarker.endsWith(')')) {
+        console.warn('[EO-159 BUG10] Stripping APA inlineMarker: ' + ar.inlineMarker);
+        ar.inlineMarker = '';
+      }
+      // Strip combined format: "(Author, 2024) [SO-2]" → "[SO-2]"
+      const _bug10Combined = ar.inlineMarker.match(/\[([A-Z]{2,4}-\d+)\]/);
+      if (_bug10Combined && ar.inlineMarker.includes('(')) {
+        ar.inlineMarker = _bug10Combined[0];
+        console.log('[EO-159 BUG10] Extracted marker from combined format: ' + ar.inlineMarker);
+      }
+      // Strip bare number: "1" or "[1]" → empty (will be renumbered)
+      if (/^\[?\d+\]?$/.test(ar.inlineMarker)) {
+        ar.inlineMarker = '';
+      }
+      // Add brackets if missing: 'PA-1' → '[PA-1]'
+      if (ar.inlineMarker && /^[A-Z]{2,4}-\d+$/.test(ar.inlineMarker)) {
+        ar.inlineMarker = '[' + ar.inlineMarker + ']';
+      }
+    }
+    // ★ EO-159 BUG 10: Ensure chapterPrefix is set
+    if (!ar.chapterPrefix && ar.sectionKey) {
+      ar.chapterPrefix = _getChapterPrefix(ar.sectionKey);
     }
     // ★ EO-112b: Filter Gemini grounding API redirect URLs
     if (ar.url && (ar.url.includes('vertexaisearch.cloud.google.com') || ar.url.includes('grounding-api-redirect'))) {
@@ -1388,7 +1512,8 @@ export async function injectReferencesToText(
   const prompt = [
     'You are a scientific editor. Below is the existing content of section "' + sectionKey + '" of a EU funding project proposal.',
     'DO NOT change the content, meaning, structure, or order of any sentences.',
-    'ADD inline citations in format (Author/Institution, Year) [' + nextNum + '], [' + (nextNum + 1) + '] etc. at the END of sentences that make empirical, legal, statistical, or comparative claims.',
+    // ★ EO-159 BUG 20: Use chapter prefix format [XX-N] instead of bare [N]
+    'ADD inline citations in format (Author/Institution, Year) [' + chapterPrefix + '-' + nextNum + '], [' + chapterPrefix + '-' + (nextNum + 1) + '] etc. at the END of sentences that make empirical, legal, statistical, or comparative claims.',
     'Aim for 1-3 citations per paragraph. DO NOT cite project decisions, goals, or purely descriptive technical text.',
     'For each citation, include a _references array entry with: authors, year, title, source, url, doi.',
     'Return ONLY valid JSON: the same structure as the input but with citations added in string fields, plus a top-level _references array.',
@@ -1472,9 +1597,15 @@ export async function enrichReferencesWithAI(
 
   try {
     var { generateSectionContent: genRaw } = await import('../services/geminiService.ts');
+    // ★ EO-159 BUG 22: Dynamic section key with appropriate token limit (not hardcoded 'problemAnalysis')
+    var _enrichTokenLimit = Math.max(8192, refs.length * 250);
     var result = await genRaw(
-      'problemAnalysis',
-      { ...projectData, _customPromptOverride: prompt },
+      'referenceEnrichment' as any,
+      {
+        ...projectData,
+        _customPromptOverride: prompt,
+        _maxOutputTokens: Math.min(_enrichTokenLimit, 32768),
+      },
       language,
       'regenerate',
       null
@@ -5093,6 +5224,21 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
             // EO-115: Renumber all references sequentially after composite
             // [EO-130h] Fix 5.8 — skip renumber if refs disabled (nothing to renumber)
             _updatePhase('referenceProcessing', _refsEnabled130h ? 'running' : 'skipped'); // [EO-137b]
+
+            // ★ EO-159 BUG 29: Persist approvedSources from activities composite generation
+            if (Array.isArray(_approvedSources) && _approvedSources.length > 0) {
+              const _existingActSources = Array.isArray(newData.approvedSources) ? newData.approvedSources : [];
+              const _newActSources = (_approvedSources as any[]).filter((s: any) =>
+                !_existingActSources.some((e: any) => {
+                  const eu = (e.url || '').split('?')[0].split('#')[0].trim().toLowerCase().replace(/\/+$/, '');
+                  const su = (s.url || '').split('?')[0].split('#')[0].trim().toLowerCase().replace(/\/+$/, '');
+                  return eu && su && eu === su;
+                })
+              );
+              newData.approvedSources = [..._existingActSources, ..._newActSources];
+              console.log('[EO-159 BUG29] Activities: persisted ' + _newActSources.length + ' new approved sources');
+            }
+
             if (_refsEnabled130h) {
               _renumberAllReferences(newData);
               _updatePhase('referenceProcessing', 'completed'); // [EO-137b]
@@ -5603,6 +5749,21 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                 // EO-115: Renumber all references sequentially after composite
                 setProjectData((prev: any) => {
                   const renumData = { ...prev };
+
+                  // ★ EO-159 BUG 29: Persist approvedSources from ER composite generation
+                  if (Array.isArray(_approvedSources) && (_approvedSources as any[]).length > 0) {
+                    const _existingErSources = Array.isArray(renumData.approvedSources) ? renumData.approvedSources : [];
+                    const _newErSources = (_approvedSources as any[]).filter((s: any) =>
+                      !_existingErSources.some((e: any) => {
+                        const eu = (e.url || '').split('?')[0].split('#')[0].trim().toLowerCase().replace(/\/+$/, '');
+                        const su = (s.url || '').split('?')[0].split('#')[0].trim().toLowerCase().replace(/\/+$/, '');
+                        return eu && su && eu === su;
+                      })
+                    );
+                    renumData.approvedSources = [..._existingErSources, ..._newErSources];
+                    console.log('[EO-159 BUG29] ER composite: persisted ' + _newErSources.length + ' new approved sources');
+                  }
+
                   _renumberAllReferences(renumData);
                   _updatePhase('referenceProcessing', 'completed'); // [EO-137b]
                   if (currentProjectId) {
@@ -6172,7 +6333,7 @@ export async function repairBrokenReferenceUrls(
     const prompt =
       `Find the exact, real, working URL for this academic/policy reference:\n` +
       `- Title: "${ref.title}"\n` +
-      `- Author: "${ref.author}"\n` +
+      `- Author: "${ref.authors}"\n` +
       `- Year: "${ref.year}"\n` +
       `- DOI: "${ref.doi || 'unknown'}"\n\n` +
       `Return ONLY a JSON object: { "url": "https://...", "doi": "..." }\n` +
@@ -6224,7 +6385,7 @@ export async function repairBrokenReferenceUrls(
 
     if (!groundingSucceeded) {
       // Google Scholar fallback — always produces a working search link
-      const scholarQuery = encodeURIComponent(`${ref.author || ''} ${ref.title || ''} ${ref.year || ''}`);
+      const scholarQuery = encodeURIComponent(`${ref.authors || ''} ${ref.title || ''} ${ref.year || ''}`); // ★ EO-159 BUG 13
       repairedRef = {
         ...repairedRef,
         url: `https://scholar.google.com/scholar?q=${scholarQuery}`,

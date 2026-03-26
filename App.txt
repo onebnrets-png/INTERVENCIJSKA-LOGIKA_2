@@ -1,8 +1,6 @@
 // App.tsx
 // ═══════════════════════════════════════════════════════════════
 // Main application shell — orchestration only.
-// v5.9 — 2026-03-26 — EO-159: BUG7 handleAddReference renumber+verify. BUG8 handleEditReference URL reset.
-//         BUG17 repair match by id. BUG21 dedup doi>url>title. BUG23 migration useEffect.
 // v5.8.5 — 2026-03-24 — EO-148: Auto-repair broken reference URLs via Google Search grounding + Scholar fallback
 // v5.8.4 — 2026-03-24 — EO-147e: Fix race condition — pass cleanedRefs directly
 // v5.8.3 — 2026-03-24 — EO-147d: Unified reference button, pre-inject cleanup, removed handleCollectFromSection
@@ -68,7 +66,6 @@ import { ensureGlobalInstructionsLoaded } from './services/globalInstructionsSer
 import { ICONS, getSteps, BRAND_ASSETS } from './constants.tsx';
 import { TEXT } from './locales.ts';
 import { isStepCompleted, createEmptyProjectData } from './utils.ts';
-import { getChapterPrefix as _appGetChapterPrefix, normalizeUrlForMatch as _appNormalizeUrl } from './utils/referencePrefixMap.ts'; // ★ EO-159
 import { colors as lightColors, darkColors, shadows, radii, spacing, animation, typography } from './design/theme.ts';
 import { initTheme, getThemeMode, onThemeChange } from './services/themeService.ts';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
@@ -263,34 +260,6 @@ const App = () => {
     }
   }, [activeView]);
 
-  // ★ EO-159 BUG 23: Migrate legacy [N] markers to [XX-N] on project load
-  useEffect(() => {
-    if (!pm.currentProjectId || !pm.projectData?.references) return;
-    const refs = pm.projectData.references;
-    if (!Array.isArray(refs) || refs.length === 0) return;
-
-    const needsMigration = refs.some((r: any) =>
-      r.inlineMarker && /^\[\d+\]$/.test(r.inlineMarker) && !r.chapterPrefix
-    );
-
-    if (needsMigration) {
-      console.log('[EO-159 BUG23] Legacy [N] markers detected, migrating...');
-      const migrated = refs.map((ref: any) => {
-        const updated = { ...ref };
-        if (!updated.chapterPrefix && updated.sectionKey) {
-          updated.chapterPrefix = _appGetChapterPrefix(updated.sectionKey);
-        }
-        if (updated.inlineMarker && /^\[\d+\]$/.test(updated.inlineMarker) && updated.chapterPrefix) {
-          const num = updated.inlineMarker.match(/\d+/)?.[0] || '1';
-          updated.inlineMarker = `[${updated.chapterPrefix}-${num}]`;
-        }
-        return updated;
-      });
-      pm.handleUpdateData(['references'], migrated);
-      console.log('[EO-159 BUG23] Migrated ' + migrated.length + ' references to prefixed format');
-    }
-  }, [pm.currentProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
-
   /* ═══ DERIVED STATE ═══ */
   const t = TEXT[language] || TEXT['en'];
   const STEPS = getSteps(language);
@@ -425,80 +394,17 @@ const App = () => {
   const handleImportProject = async (event: React.ChangeEvent<HTMLInputElement>) => { generation.setIsLoading(true); try { await pm.handleImportProject(event); setActiveView('project'); pm.setCurrentStepId(1); } catch (e: any) { generation.setError(`Failed to import: ${e.message}`); } finally { generation.setIsLoading(false); } };
 
   // ★ EO-069: References CRUD handlers
-  // ★ EO-159 BUG 7: Renumber after adding + verify URL
-  const handleAddReference = async (ref: any) => {
+  const handleAddReference = (ref: any) => {
     const newRef = { ...ref, id: 'ref_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) };
     const currentRefs = Array.isArray(pm.projectData.references) ? pm.projectData.references : [];
-
-    // Ensure chapterPrefix is set
-    if (!newRef.chapterPrefix && newRef.sectionKey) {
-      newRef.chapterPrefix = _appGetChapterPrefix(newRef.sectionKey);
-    }
-
-    const allRefs = [...currentRefs, newRef];
-
-    // Renumber all refs with same chapterPrefix
-    const prefix = newRef.chapterPrefix || 'REF';
-    let counter = 1;
-    const renumbered = allRefs.map((r: any) => {
-      if ((r.chapterPrefix || 'REF') === prefix) {
-        return { ...r, inlineMarker: `[${prefix}-${counter++}]` };
-      }
-      return r;
-    });
-
-    pm.handleUpdateData(['references'], renumbered);
+    pm.handleUpdateData(['references'], [...currentRefs, newRef]);
     setAddRefModalOpen(false);
-    console.log('[EO-159 BUG7] Added reference with marker [' + prefix + '-' + (counter - 1) + ']');
-
-    // Fire-and-forget URL verification
-    if (newRef.url) {
-      try {
-        const { verifyReferencesBatch } = await import('./services/referenceVerificationService.ts');
-        verifyReferencesBatch([newRef]).catch(() => {});
-      } catch (_e) { /* non-critical */ }
-    }
   };
 
-  // ★ EO-159 BUG 8: Reset verification on URL/DOI change + re-verify async
-  const handleEditReference = async (id: string, updates: any) => {
+  const handleEditReference = (id: string, updates: any) => {
     const currentRefs = Array.isArray(pm.projectData.references) ? pm.projectData.references : [];
-    const oldRef = currentRefs.find((r: any) => r.id === id);
-
-    const updatedRefs = currentRefs.map((r: any) => {
-      if (r.id !== id) return r;
-      const updated = { ...r, ...updates };
-
-      // Reset verification if URL changed
-      if (updates.url !== undefined && updates.url !== r.url) {
-        updated.urlVerified = undefined;
-        updated.verificationStatus = 'pending';
-        updated.verificationMethod = undefined;
-        updated.resolvedUrl = undefined;
-        updated.canonicalUrl = undefined;
-        updated.metadataVerified = undefined;
-        console.log('[EO-159 BUG8] URL changed for ' + (r.inlineMarker || r.id) + ', reset verification');
-      }
-      if (updates.doi !== undefined && updates.doi !== r.doi) {
-        updated.urlVerified = undefined;
-        updated.verificationStatus = 'pending';
-      }
-
-      return updated;
-    });
-
-    pm.handleUpdateData(['references'], updatedRefs);
-
-    // Re-verify async if URL changed
-    if (updates.url !== undefined && oldRef && updates.url !== oldRef.url) {
-      const changedRef = updatedRefs.find((r: any) => r.id === id);
-      if (changedRef) {
-        try {
-          const { verifyReferencesBatch } = await import('./services/referenceVerificationService.ts');
-          verifyReferencesBatch([changedRef]).catch(() => {});
-        } catch (_e) { /* non-critical */ }
-      }
-    }
+    const updated = currentRefs.map((r: any) => r.id === id ? { ...r, ...updates } : r);
+    pm.handleUpdateData(['references'], updated);
   };
 
   const handleDeleteReference = (id: string) => {
@@ -600,7 +506,7 @@ if (verResults && verResults.length > 0) {
         const refs = [...(prev.references || [])];
         for (const repaired of repairedRefs) {
           const idx = refs.findIndex(
-            (r: any) => r.id === repaired.id  // ★ EO-159 BUG 17: Match by unique id, not mutable fields
+            (r: any) => r.inlineMarker === repaired.inlineMarker && r.sectionKey === repaired.sectionKey
           );
           if (idx !== -1) {
             refs[idx] = { ...refs[idx], ...repaired };
@@ -644,20 +550,7 @@ if (verResults && verResults.length > 0) {
         return;
       }
       const currentRefs = Array.isArray(pm.projectData.references) ? pm.projectData.references : [];
-      // ★ EO-159 BUG 21: Better dedup using doi > url > title+year
-      const deduped = newRefs.filter((nr: any) => {
-        return !currentRefs.some((cr: any) => {
-          // Match by DOI first (most reliable)
-          if (cr.doi && nr.doi && cr.doi.trim() === nr.doi.trim()) return true;
-          // Match by normalized URL
-          if (cr.url && nr.url && _appNormalizeUrl(cr.url) === _appNormalizeUrl(nr.url)) return true;
-          // Match by title + year (case-insensitive)
-          if (cr.title && nr.title && cr.year && nr.year &&
-              cr.title.trim().toLowerCase() === nr.title.trim().toLowerCase() &&
-              String(cr.year) === String(nr.year)) return true;
-          return false;
-        });
-      });
+      const deduped = newRefs.filter((nr: any) => !currentRefs.some((cr: any) => cr.authors === nr.authors && String(cr.year) === String(nr.year)));
       if (deduped.length === 0) {
         generation.setError(language === 'si' ? 'Vsi citati so že dodani.' : 'All citations already added.');
         setTimeout(() => generation.setError(null), 3000);
@@ -1163,7 +1056,6 @@ if (verResults && verResults.length > 0) {
         language={language}
         defaultSectionKey={addRefDefaultSection}
         sectionLabels={referenceSectionLabels}
-        currentReferences={Array.isArray(pm.projectData.references) ? pm.projectData.references : []}
       />
 
       {/* ═══ PRINT LAYOUT ═══ */}

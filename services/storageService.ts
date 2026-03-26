@@ -796,8 +796,10 @@ export const storageService = {
       return null;
     }
     // ★ v5.6: NULL array fields guard — ensure all array fields are [] not null (EO-028)
+    // ★ EO-159 BUG 33: Include references and approvedSources in NULL guard
     var arrayFields = ['generalObjectives', 'specificObjectives', 'activities', 'partners',
-      'outputs', 'outcomes', 'impacts', 'risks', 'kers', 'expectedResults'];
+      'outputs', 'outcomes', 'impacts', 'risks', 'kers', 'expectedResults',
+      'references', 'approvedSources'];
     arrayFields.forEach(function(field) {
       if (data.data[field] === null || data.data[field] === undefined) {
         data.data[field] = [];
@@ -812,6 +814,9 @@ export const storageService = {
     if (Array.isArray(pd.generalObjectives) && pd.generalObjectives.some(function(o) { return (o.title || '').trim().length > 0; })) hasRealContent = true;
     if (Array.isArray(pd.specificObjectives) && pd.specificObjectives.some(function(o) { return (o.title || '').trim().length > 0; })) hasRealContent = true;
     if (Array.isArray(pd.activities) && pd.activities.some(function(wp) { return (wp.title || '').trim().length > 0; })) hasRealContent = true;
+    // ★ EO-159 BUG 30: References count as real content
+    if (Array.isArray(pd.references) && pd.references.length > 3) hasRealContent = true;
+    if (Array.isArray(pd.approvedSources) && pd.approvedSources.length > 0) hasRealContent = true;
 
     if (!hasRealContent) {
       console.log('[storageService.loadProject] Skeleton data (no real content) for lang=' + language + ', projectId=' + targetId);
@@ -850,6 +855,9 @@ export const storageService = {
       if (Array.isArray(projectData.generalObjectives) && projectData.generalObjectives.some(function(o) { return (o.title || '').trim().length > 0; })) hasRealContent = true;
       if (Array.isArray(projectData.specificObjectives) && projectData.specificObjectives.some(function(o) { return (o.title || '').trim().length > 0; })) hasRealContent = true;
       if (Array.isArray(projectData.activities) && projectData.activities.some(function(wp) { return (wp.title || '').trim().length > 0; })) hasRealContent = true;
+      // ★ EO-159 BUG 30: References count as real content
+      if (Array.isArray(projectData.references) && projectData.references.length > 3) hasRealContent = true;
+      if (Array.isArray(projectData.approvedSources) && projectData.approvedSources.length > 0) hasRealContent = true;
     }
 
     if (!hasRealContent) {

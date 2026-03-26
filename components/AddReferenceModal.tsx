@@ -2,7 +2,7 @@
 // ═══════════════════════════════════════════════════════════════
 // EO-069: Modal dialog for manually adding a reference.
 // Follows ConfirmationModal design patterns (design system theme).
-// v1.1 — 2026-03-22 — EO-140c: Responsive via useResponsive().
+// v1.1 — 2026-03-26 — EO-159 BUG 2: [XX-N] marker format + chapterPrefix
 // v1.0 — 2026-03-10
 // ═══════════════════════════════════════════════════════════════
 
@@ -12,6 +12,7 @@ import { getThemeMode, onThemeChange } from '../services/themeService.ts';
 import { useResponsive } from '../hooks/useResponsive.ts';
 import { TEXT } from '../locales.ts';
 import type { Reference } from '../types.ts';
+import { getChapterPrefix } from '../utils/referencePrefixMap.ts'; // ★ EO-159 BUG 2
 
 interface AddReferenceModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ interface AddReferenceModalProps {
   language: 'en' | 'si';
   defaultSectionKey?: string;
   sectionLabels: Record<string, string>;
+  currentReferences?: any[]; // ★ EO-159 BUG 2: needed for [XX-N] numbering
 }
 
 const SECTION_KEYS_WITH_REFS = [
@@ -49,6 +51,7 @@ const AddReferenceModal: React.FC<AddReferenceModalProps> = ({
   language,
   defaultSectionKey = '',
   sectionLabels,
+  currentReferences = [], // ★ EO-159 BUG 2
 }) => {
   const [isDark, setIsDark] = useState(getThemeMode() === 'dark');
   useEffect(() => {
@@ -98,10 +101,17 @@ const AddReferenceModal: React.FC<AddReferenceModalProps> = ({
 
   const handleSave = () => {
     if (!canSave) return;
+    // ★ EO-159 BUG 2: Generate [XX-N] format marker with chapterPrefix
+    const _sk = sectionKey || 'general';
+    const _prefix = getChapterPrefix(_sk);
+    const _samePrefix = (currentReferences || []).filter((r: any) => r.chapterPrefix === _prefix);
+    const _nextNum = _samePrefix.length + 1;
+    const _marker = `[${_prefix}-${_nextNum}]`;
     onSave({
-      sectionKey: sectionKey || 'general',
+      sectionKey: _sk,
       fieldKey: 'description',
-      inlineMarker: `(${authors.split(',')[0].trim()}, ${year.trim()})`,
+      inlineMarker: _marker,
+      chapterPrefix: _prefix, // ★ EO-159 BUG 2
       authors: authors.trim(),
       year: year.trim(),
       title: title.trim(),

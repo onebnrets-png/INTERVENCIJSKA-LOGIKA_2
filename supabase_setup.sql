@@ -436,7 +436,7 @@ CREATE POLICY pd_delete_superadmin ON project_data FOR DELETE USING (
   is_superadmin()
 );
 
--- ═══ v5.0 (EO-060): Overwrite guard trigger ═══
+-- ═══ v5.1 (EO-159 BUG27): Overwrite guard trigger — lowered threshold ═══
 CREATE OR REPLACE FUNCTION guard_against_data_overwrite()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -446,7 +446,8 @@ BEGIN
   IF TG_OP = 'UPDATE' THEN
     old_size := length(OLD.data::text);
     new_size := length(NEW.data::text);
-    IF old_size > 5000 AND new_size < 500 AND NEW.data != '{}'::jsonb THEN
+    -- ★ EO-159 BUG 27: Lowered threshold new_size < 500 → < 100 to avoid false positives during pipeline saves
+    IF old_size > 5000 AND new_size < 100 AND NEW.data != '{}'::jsonb THEN
       RAISE EXCEPTION
         '[EO-060] data_overwrite_guard: Blocked overwrite of % chars with % chars for project=% lang=%. Use explicit {} to clear data.',
         old_size, new_size, NEW.project_id, NEW.language;
@@ -681,4 +682,16 @@ CREATE TRIGGER on_auth_session_created
 -- │ 13. VERIFICATION                                                 │
 -- └──────────────────────────────────────────────────────────────────┘
 
-SELECT '✅ EURO-OFFICE supabase_setup.sql v5.0 complete' as status;
+-- ★ EO-159: Changelog entry
+INSERT INTO app_changelog (code, version, type, title, description, files_changed, released_at)
+VALUES (
+  'EO-159',
+  '1.11.0',
+  'FEAT',
+  'Complete reference system overhaul — 33 bugs fixed',
+  'BUG1: URL/DOI hallucination blacklist. BUG2: AddReferenceModal [XX-N] format. BUG3: Batch verification pagination. BUG4: Global text marker sweep. BUG5: Refs OFF/ON lifecycle. BUG6: STEP1 chapterPrefix filter. BUG7: handleAddReference renumbering. BUG8: handleEditReference URL reset. BUG9: normalizeMarker APA. BUG10: AI marker format enforcement. BUG11: URL normalization. BUG12: objectives/kers/results schema _references. BUG13: ref.authors typo. BUG14+24: extractMarkerNumber sort. BUG15: generalized auto-repair. BUG17: repair match by id. BUG18: schema required fields. BUG20: injectRefs [XX-N] format. BUG21: dedup by doi/url/title. BUG22: enrich token limit. BUG23: migration on load. BUG25: APA lookup. BUG27: overwrite threshold. BUG28: conditional getReferencesRequirement. BUG29: approvedSources persist. BUG30: hasRealContent refs check. BUG31: buildSearchQuery cases. BUG33: NULL guard.',
+  ARRAY['utils/referencePrefixMap.ts','services/geminiService.ts','hooks/useGeneration.ts','services/aiProvider.ts','components/AddReferenceModal.tsx','App.tsx','services/referenceVerificationService.ts','services/sourceRetrievalService.ts','components/ReferencesBlock.tsx','components/ProjectDisplay.tsx','services/Instructions.ts','services/storageService.ts','services/docxGenerator.ts','supabase_setup.sql'],
+  '2026-03-26'
+) ON CONFLICT DO NOTHING;
+
+SELECT '✅ EURO-OFFICE supabase_setup.sql v5.1 (EO-159) complete' as status;

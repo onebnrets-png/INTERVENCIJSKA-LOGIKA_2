@@ -1,6 +1,8 @@
 // services/sourceRetrievalService.ts
 // ═══════════════════════════════════════════════════════════════
 // EO-084: Approved source pool — retrieval-only citation pipeline
+// v1.1 — 2026-03-26 — EO-159 BUG11: normalizeUrlForMatch in matchReferenceToSource.
+//         BUG31: explicit buildSearchQuery cases for objectives/kers/results.
 // v1.0 — 2026-03-13
 //
 // ARCHITECTURE DECISION: Frontend service (not Supabase Edge Function)
@@ -23,6 +25,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import type { ApprovedSource, AuthorityScore } from '../types.ts';
+import { normalizeUrlForMatch } from '../utils/referencePrefixMap.ts'; // ★ EO-159 BUG 11
 
 // ─── Constants ───────────────────────────────────────────────
 
@@ -396,6 +399,30 @@ export function buildSearchQuery(sectionKey: string, projectData: any): string {
       }
       break;
     }
+    // ★ EO-159 BUG 31: Explicit cases for objectives/kers/results
+    case 'generalObjectives':
+    case 'specificObjectives': {
+      const objectives = sectionKey === 'generalObjectives'
+        ? projectData?.generalObjectives : projectData?.specificObjectives;
+      const titles = (Array.isArray(objectives) ? objectives : [])
+        .slice(0, 3).map((o: any) => o.title).filter(Boolean).join(', ');
+      if (titles) parts.push(titles + ' objectives indicators');
+      break;
+    }
+    case 'outputs':
+    case 'outcomes':
+    case 'impacts': {
+      const items = Array.isArray(projectData?.[sectionKey]) ? projectData[sectionKey] : [];
+      const titles = items.slice(0, 3).map((i: any) => i.title).filter(Boolean).join(', ');
+      if (titles) parts.push(titles + ' expected results');
+      break;
+    }
+    case 'kers': {
+      const kers = Array.isArray(projectData?.kers) ? projectData.kers : [];
+      const titles = kers.slice(0, 2).map((k: any) => k.title).filter(Boolean).join(', ');
+      if (titles) parts.push(titles + ' key exploitable results');
+      break;
+    }
     default: {
       // Generic: use main aim and core problem
       const aim = projectData?.projectIdea?.mainAim;
@@ -441,11 +468,11 @@ export function matchReferenceToSource(
     }
   }
 
-  // 2. URL exact match
+  // 2. URL exact match — ★ EO-159 BUG 11: normalize before comparing
   if (ref.url && ref.url.trim().length > 10) {
-    const refUrl = ref.url.trim().toLowerCase().replace(/\/+$/, '');
+    const refUrl = normalizeUrlForMatch(ref.url);
     for (const src of approvedSources) {
-      if (src.url && src.url.trim().toLowerCase().replace(/\/+$/, '') === refUrl) {
+      if (src.url && normalizeUrlForMatch(src.url) === refUrl) {
         return src.id;
       }
     }

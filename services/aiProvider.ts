@@ -1,8 +1,9 @@
 // services/aiProvider.ts
 // ═══════════════════════════════════════════════════════════════
-// Universal AI Provider Abstraction Layer – v6.22 (2026-03-24)
+// Universal AI Provider Abstraction Layer – v6.23 (2026-03-26)
 // ═══════════════════════════════════════════════════════════════ 
 // CHANGELOG:
+// v6.23 — 2026-03-26 — EO-159 BUG1: scrubHallucinatedReferences() — URL domain blacklist + fake DOI prefix detection.
 // v6.22 — 2026-03-24 — EO-155: Increased maxOutputTokens from 8192 to 16384 to prevent KERs/Activities JSON truncation on long composite sections.
 //                               EO-157: Filter hallucinated authors (Vertex AI Search, Google, Gemini) from Gemini grounding chunk titles.
 // v6.21 — 2026-03-24 — EO-148: Added forceGoogleSearch?: boolean to AIGenerateOptions.
@@ -1185,6 +1186,46 @@ function handleProviderError(e: any, provider: string): never {
 
   console.error('[' + provider + '] Unclassified API Error:', e);
   throw new Error('UNKNOWN_ERROR|' + provider + '|' + msg.substring(0, 200));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★ EO-159 BUG 1: URL domain blacklist + DOI prefix detection
+// Scrubs hallucinated URLs and fake DOIs from AI-generated _references.
+// Call on any array of reference objects after JSON.parse.
+// ═══════════════════════════════════════════════════════════════
+const _BUG1_HALLUCINATED_URL_PATTERNS = [
+  'example.com', 'example.org', 'example.net',
+  'fictional-', 'placeholder', 'genericjournal', 'fake-doi',
+  'test-url.com', 'sample-journal', 'lorem-ipsum',
+  'doi.org/10.1000/', 'doi.org/10.9999/', 'doi.org/10.0000/',
+  'doi.org/10.1234/', 'doi.org/10.5555/',
+];
+const _BUG1_FAKE_DOI_PREFIXES = ['10.1000', '10.9999', '10.0000', '10.1234', '10.5555'];
+
+export function scrubHallucinatedReferences(refs: any[]): any[] {
+  if (!Array.isArray(refs)) return refs;
+  return refs.map(function(ref: any) {
+    if (!ref) return ref;
+    const r = { ...ref };
+    if (r.url) {
+      const urlLower = r.url.toLowerCase();
+      const isHallucinated = _BUG1_HALLUCINATED_URL_PATTERNS.some((p: string) => urlLower.includes(p));
+      if (isHallucinated) {
+        console.warn('[EO-159 BUG1] Hallucinated URL cleared: ' + r.url);
+        r.url = '';
+        r.urlVerified = false;
+        r.verificationStatus = 'hallucinated';
+      }
+    }
+    if (r.doi) {
+      const prefix = r.doi.split('/')[0];
+      if (_BUG1_FAKE_DOI_PREFIXES.includes(prefix)) {
+        console.warn('[EO-159 BUG1] Fake DOI cleared: ' + r.doi);
+        r.doi = '';
+      }
+    }
+    return r;
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════

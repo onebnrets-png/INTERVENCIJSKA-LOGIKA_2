@@ -1615,25 +1615,26 @@ export const REFERENCES_REQUIREMENT = `
 ═══ REFERENCES REQUIREMENT (MANDATORY FOR EVERY SECTION) ═══
 
 In addition to the section content, you MUST include a "_references" array as a SIBLING key in your JSON response.
-For EVERY numbered inline citation marker [N] you use in the generated text, create a corresponding entry at index N-1 in _references.
+For EVERY numbered inline citation marker you use in the generated text, create a corresponding entry in _references.
 
-INLINE CITATION FORMAT:
-- Bare numeric markers [1], [2], [3] alone are NOT sufficient for factual claims.
-- Use short inline bibliographic attribution PLUS numbered marker:
-  - (Author, Year) [1]
-  - (Author et al., Year) [2]
-  - (Institution, Year) [3]
-- Each number is the 1-based index into the _references array.
-- The short attribution must be human-readable in the prose and must reflect the real metadata of the cited source.
-- For institutional sources, use institution + year.
-- For multi-author academic sources, use first author + et al. + year.
-- Do NOT invent missing metadata.
-- Markers MUST be sequential starting from [1].
+★ EO-159 BUG 10 — REFERENCE FORMAT — CRITICAL RULES:
+1. In TEXT BODY: write APA in-text citation followed by prefixed marker:
+   (Author, Year) [XX-N]
+   Example: "...significant results (Smith, 2024) [PA-1] and confirmed by (WHO, 2023) [PA-2]."
+2. In JSON _references array: inlineMarker MUST be ONLY the bracketed marker: "[PA-1]"
+   NEVER put the APA citation "(Author, Year)" inside inlineMarker.
+   NEVER use bare numbers "[1]" — ALWAYS use the chapter prefix format "[PA-1]", "[SO-2]", etc.
+3. Prefix must match the section being generated:
+   PA = problemAnalysis, PI = projectIdea, GO = generalObjectives, SO = specificObjectives,
+   AC = activities, PM = projectManagement, RI = risks, ER = outputs/outcomes/impacts, KE = kers
+4. Numbers are sequential within each prefix group: [PA-1], [PA-2], [PA-3]...
+5. NEVER generate URLs containing: example.com, example.org, fictional-, placeholder, genericjournal
+6. NEVER generate DOIs with prefixes: 10.1000, 10.9999, 10.0000, 10.1234, 10.5555 (these are placeholders)
 
 SEARCH-FIRST APPROACH: Before including ANY citation, verify it exists. If web search is available, use it to confirm the publication is real and find the URL.
 
 Each "_references" entry MUST be an object with ALL these fields populated with REAL, VERIFIED data:
-  - "inlineMarker": string — the marker used in text, e.g. "[1]", "[2]"
+  - "inlineMarker": string — ONLY the bracketed marker, e.g. "[PA-1]", "[SO-2]". NEVER "(Author, Year)" here.
   - "authors": string — full author names, e.g. "Jambeck, J. R., Geyer, R., Wilcox, C." or "European Commission"
   - "year": number or string — publication year, e.g. 2023
   - "title": string — the REAL, VERIFIED title of the publication. NEVER "Unknown", NEVER empty, NEVER a placeholder.
@@ -1652,7 +1653,7 @@ URL PROVENANCE POLICY:
 STRICT RULES:
 - QUALITY OVER QUANTITY: 1–3 verified citations per paragraph is better than 5 unverifiable ones.
 - Include ALL citation markers used in the generated text — missing any is a FATAL ERROR.
-- Every marker [N] in the text MUST have a corresponding _references entry at index N-1 with a real title and real source. URL is preferred but may be empty if unverified.
+- Every marker [XX-N] in the text MUST have a corresponding _references entry with a real title and real source.
 - Do NOT fabricate references that do not exist. Only include citations you are confident are real.
 - NEVER use placeholder text: "Title not available", "Unknown source", "URL not available", "details pending", "please fill manually", "AI did not generate this field" — ALL are FORBIDDEN.
 - If you cannot verify a citation, DO NOT include it in the text or in _references.
@@ -1660,16 +1661,16 @@ STRICT RULES:
 - If web search is available, USE IT to find real URLs for every citation.
 - If no citations were used (rare), return "_references": [].
 
-Example _references entry:
+Example _references entry (note inlineMarker is ONLY the bracket — NO APA text):
 {
-  "inlineMarker": "[1]",
+  "inlineMarker": "[PA-1]",
   "authors": "Jambeck, J. R., Geyer, R., Wilcox, C.",
   "year": 2015,
   "title": "Plastic waste inputs from land into the ocean",
   "source": "Science",
   "url": "https://doi.org/10.1126/science.1260352",
   "doi": "10.1126/science.1260352",
-  "sectionKey": "stateOfTheArt"
+  "sectionKey": "problemAnalysis"
 }
 
 APPROVED SOURCE POOL (EO-084):
