@@ -1,5 +1,7 @@
 // components/ReferencesBlock.tsx
 // ═══════════════════════════════════════════════════════════════
+// v1.16 — 2026-03-30 — EO-163 BUG1: Add stripBrackets helper — normalize inlineMarker
+//         bracket presence before comparison to fix "Reference not found" for [SO-3] etc.
 // v1.15 — 2026-03-26 — EO-159 BUG9: normalizeMarker APA format passthrough.
 // v1.14 — 2026-03-24 — EO-150c: Display full prefixed marker [ER-1] instead of stripped [1].
 // v1.13 — 2026-03-24 — EO-147d: Unified single reference button
@@ -53,6 +55,13 @@ const getReferenceAnchorId = (ref: Reference, fallbackSectionKey?: string): stri
   const safeMarker = String(ref.inlineMarker || 'x').replace(/[^\w-]/g, '');
   const safeId = String(ref.id || 'ref').replace(/[^\w-]/g, '');
   return `ref-${safeSection}-${safeMarker}-${safeId}`;
+};
+
+// ★ EO-163 BUG1: Normalize inlineMarker bracket presence before string comparison.
+// Handles cases where AI stores "SO-3" but text has "[SO-3]" or vice versa.
+export const stripBrackets = (marker: string | undefined | null): string => {
+  if (!marker) return '';
+  return String(marker).trim().replace(/^\[/, '').replace(/\]$/, '');
 };
 
 export const normalizeMarker = (inlineMarker?: string | number): number | null => {

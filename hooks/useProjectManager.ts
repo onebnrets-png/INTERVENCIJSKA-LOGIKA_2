@@ -2,6 +2,8 @@
 // ═══════════════════════════════════════════════════════════════
 // Project CRUD, import/export, save, auto-save, navigation.
 // On login: shows project list instead of auto-loading last project.
+// v1.10 — 2026-03-30 — EO-163 BUG3: AutoSave cross-project guard — track loadedProjectIdRef
+//         to detect project switch before auto-save fires. Block save when projectId mismatch.
 // v1.9 — 2026-03-23 — EO-143: Smart AutoSave acronym guard — allow AI-generated acronym changes, update metadata
 // v1.8 — 2026-03-10 — EO-065: Fix SI project loading — language closure stale bug
 //   - loadActiveProject accepts langOverride parameter (setLanguage is batched)
@@ -167,6 +169,10 @@ export const useProjectManager = ({
 
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const isLoadingProjectRef = useRef(false);
+  // ★ EO-163 BUG3: Track which projectId was last fully loaded — AutoSave guard uses this
+  // to detect project switches where projectData belongs to the NEW project but
+  // currentProjectId still points to the OLD project (or vice versa during React batching).
+  const loadedProjectIdRef = useRef<string | null>(null);
   
   // ★ v1.4: Undo/Redo history stack (50 steps max)
   const MAX_HISTORY = 50;
@@ -335,9 +341,12 @@ var handleRedo = useCallback(function() {
             si: activeLang === 'si' ? mergedData : mergedOther,
           });
           setProjectData(mergedData);
+          // ★ EO-163 BUG3: Record which project was loaded so AutoSave can detect stale saves
+          loadedProjectIdRef.current = specificId || storageService.getCurrentProjectId() || null;
         } else {
           setProjectData(createEmptyProjectData());
           setProjectVersions({ en: null, si: null });
+          loadedProjectIdRef.current = null;
         }
 
         const activeId = storageService.getCurrentProjectId();
@@ -407,6 +416,15 @@ var handleRedo = useCallback(function() {
       if (!currentUser) return;
       if (!hasContent(projectData)) return;
 
+      // ★ EO-163 BUG3: Block save if projectData belongs to a different project than currentProjectId.
+      // Happens during project switch: React batches state updates so projectData (new project)
+      // may render before currentProjectId updates, causing the new project's data to be saved
+      // under the old project's ID. loadedProjectIdRef is set synchronously after load completes.
+      if (loadedProjectIdRef.current && currentProjectId && loadedProjectIdRef.current !== currentProjectId) {
+        console.warn('[EO-163] AutoSave BLOCKED: loadedProjectId', loadedProjectIdRef.current, '!== currentProjectId', currentProjectId, '— project switch in progress, skipping save');
+        return;
+      }
+
       // EO-143: Smart acronym guard — allow legitimate AI-generated acronym changes
       // Only block if projectId mismatch is detected, not acronym text changes
       var pdAcronym = (projectData.projectIdea && projectData.projectIdea.projectAcronym) ? projectData.projectIdea.projectAcronym.trim() : '';
@@ -456,6 +474,8 @@ var handleRedo = useCallback(function() {
 
       // ★ v1.5 EO-059: Set loading flag IMMEDIATELY to block auto-save during switch
       isLoadingProjectRef.current = true;
+      // ★ EO-163 BUG3: Clear loadedProjectIdRef immediately so AutoSave guard detects the switch
+      loadedProjectIdRef.current = null;
 
       // Save current project before switching (if one is loaded)
       if (currentProjectId && hasContent(projectData)) {

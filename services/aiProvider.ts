@@ -1,8 +1,10 @@
 // services/aiProvider.ts
 // ═══════════════════════════════════════════════════════════════
-// Universal AI Provider Abstraction Layer – v6.24 (2026-03-26)
+// Universal AI Provider Abstraction Layer – v6.25 (2026-03-30)
 // ═══════════════════════════════════════════════════════════════ 
 // CHANGELOG:
+// v6.25 — 2026-03-30 — EO-163 BUG2: Guard against undefined response.text in Gemini adapter.
+//         Added empty-response detection + EMPTY_RESPONSE error before .trim() crash.
 // v6.24 — 2026-03-26 — EO-161: Dynamic token limit calculator + truncation auto-retry.
 //         calculateDynamicTokenLimit() replaces getMaxTokensForSection() in all three provider adapters.
 //         AIGenerateOptions extended with referencesEnabled/expectedItemCount/previousOutputTokens/isComposite.
@@ -992,6 +994,12 @@ generateConfig.maxOutputTokens = calculateDynamicTokenLimit({
     const _geminiOut: number = _geminiUsage?.candidatesTokenCount ?? 0;
     const _geminiTotal: number = _geminiUsage?.totalTokenCount ?? (_geminiIn + _geminiOut);
     console.log('[EO-138] API usage: gemini', config.model, 'in:', _geminiIn, 'out:', _geminiOut);
+    // ★ EO-163 BUG2: Guard against undefined response.text — throws UNKNOWN_ERROR with .trim() crash
+    const _geminiRawText = response?.text ?? '';
+    if (!_geminiRawText) {
+      console.error('[EO-163] Gemini returned empty/undefined response for', options.sectionKey || 'unknown');
+      throw new Error(`EMPTY_RESPONSE|gemini|Gemini returned no text for "${options.sectionKey || 'unknown'}". The model may be overloaded or the request was filtered.`);
+    }
     // ★ EO-161: Store output tokens per section for future dynamic estimation
     if (options.sectionKey && _geminiOut > 0) {
       if (!(window as any).__lastOutputTokens) (window as any).__lastOutputTokens = {};
@@ -999,7 +1007,7 @@ generateConfig.maxOutputTokens = calculateDynamicTokenLimit({
       console.log(`[EO-161] Stored ${_geminiOut} output tokens for "${options.sectionKey}"`);
     }
     return {
-      text: response.text.trim(),
+      text: _geminiRawText.trim(),
       _usage: { provider: 'gemini', model: config.model, inputTokens: _geminiIn, outputTokens: _geminiOut, totalTokens: _geminiTotal },
     };
   } catch (e: any) {

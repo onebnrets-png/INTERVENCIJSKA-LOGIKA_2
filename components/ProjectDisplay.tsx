@@ -82,7 +82,7 @@ import PERTChart from './PERTChart.tsx';
 import Organigram from './Organigram.tsx';
 import { recalculateProjectSchedule } from '../utils.ts';
 import InlineChart from './InlineChart.tsx';
-import ReferencesBlock, { normalizeMarker, dedupeReferences } from './ReferencesBlock.tsx';
+import ReferencesBlock, { normalizeMarker, dedupeReferences, stripBrackets } from './ReferencesBlock.tsx';  // ★ EO-163: added stripBrackets
 import GuideTooltip from './GuideTooltip.tsx';
 import FieldAIAssistant from './FieldAIAssistant.tsx';
 import { stepColors } from '../design/theme.ts';
@@ -210,7 +210,11 @@ const findReferenceByInlineMarker = (
     const deduped = dedupeReferences(filtered);
 
     // EO-141: Match by full inlineMarker string first (handles [PA-1], [SO-2] etc)
-    const byMarkerStr = deduped.find((ref) => ref.inlineMarker === markerStr);
+    // ★ EO-163 BUG1: Normalize brackets on both sides — AI sometimes stores "SO-3" vs "[SO-3]"
+    const normalizedMarkerStr = stripBrackets(markerStr);
+    const byMarkerStr = deduped.find((ref) =>
+      stripBrackets(ref.inlineMarker) === normalizedMarkerStr
+    );
     if (byMarkerStr) return byMarkerStr;
 
     // ★ EO-159 BUG 25: Handle APA format markers in legacy data e.g. "(Smith, 2024)"
