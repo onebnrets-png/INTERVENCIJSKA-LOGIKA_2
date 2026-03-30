@@ -1,7 +1,7 @@
 // App.tsx
 // ═══════════════════════════════════════════════════════════════
 // Main application shell — orchestration only.
-// v5.9 — 2026-03-26 — EO-159: BUG7 handleAddReference renumber+verify. BUG8 handleEditReference URL reset.
+// v5.10 — 2026-03-27 — EO-160c: Add _ownerId to JSON export for user-identity check on import.
 //         BUG17 repair match by id. BUG21 dedup doi>url>title. BUG23 migration useEffect.
 // v5.8.5 — 2026-03-24 — EO-148: Auto-repair broken reference URLs via Google Search grounding + Scholar fallback
 // v5.8.4 — 2026-03-24 — EO-147e: Fix race condition — pass cleanedRefs directly
@@ -75,6 +75,7 @@ import ErrorBoundary from './components/ErrorBoundary.tsx';
 import { useAuth } from './hooks/useAuth.ts';
 import { useProjectManager } from './hooks/useProjectManager.ts';
 import { useTranslation } from './hooks/useTranslation.ts';
+import { storageService } from './services/storageService.ts';  // ★ EO-160c: for getCurrentUserId in export
 import { useGeneration } from './hooks/useGeneration.ts';
 import { collectReferencesFromText, enrichReferencesWithAI, injectReferencesToText } from './hooks/useGeneration.ts'; // EO-147d: removed collectReferencesFromSection
 import { useResponsive } from './hooks/useResponsive.ts'; // EO-140
@@ -1036,6 +1037,8 @@ if (verResults && verResults.length > 0) {
                           meta: { version: '3.0', createdAt: new Date().toISOString(), activeLanguage: language, author: auth.currentUser, projectId: pm.currentProjectId },
                           data: { en: language === 'en' ? pm.projectData : (pm.projectVersions?.en || null), si: language === 'si' ? pm.projectData : (pm.projectVersions?.si || null) },
                         };
+                        // ★ EO-160c: Include owner ID so import handler can detect cross-user imports
+                        (exportData as any)._ownerId = await storageService.getCurrentUserId();
                         const jsonStr = JSON.stringify(exportData, null, 2);
                         const blob = new Blob([jsonStr], { type: 'application/json' });
                         const fileName = (pm.projectData.projectIdea?.projectAcronym?.trim() || pm.projectData.projectIdea?.projectTitle?.trim() || 'project') + '.json';

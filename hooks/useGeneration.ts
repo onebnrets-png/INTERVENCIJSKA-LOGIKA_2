@@ -1,6 +1,11 @@
 // hooks/useGeneration.ts
 // ═══════════════════════════════════════════════════════════════ 
 // AI content generation — sections, fields, summaries.
+// v7.73 — 2026-03-27 — EO-160c: Harden _recordUsage — guard against _usage={} (no .chapters)
+//         caused TypeError crash after EO-160 reset. Also added try-catch on all call sites.
+// v7.72 — 2026-03-26 — EO-161: Pass referencesEnabled/expectedItemCount/isComposite to all
+//         generateSectionContent calls in executeGeneration and composite runners.
+//         getExpectedItemCount() helper added. Composite calls flagged with _eo161IsComposite=true.
 // v7.71 — 2026-03-26 — EO-159: BUG4 global text marker sweep. BUG6 chapterPrefix filter in STEP1.
 //         BUG10 APA inlineMarker stripping. BUG12 object-root unwrap for objectives/kers/results/risks.
 //         BUG13 ref.authors typo fix. BUG15 generalized auto-repair all sections. BUG20 [XX-N] in injectReferencesToText.
@@ -2422,7 +2427,8 @@ function _recordUsage(
     isRetry,
     generationPath,
   };
-  if (!newData._usage) {
+  // ★ EO-160c: Guard against _usage={} with no .chapters (EO-160 reset wiped structure)
+  if (!newData._usage || !newData._usage.chapters) {
     newData._usage = { chapters: {}, grandTotalEUR: 0, grandTotalTokens: 0, usdToEurRate: USD_TO_EUR_RATE };
   }
   if (!newData._usage.chapters[chapterKey]) {
@@ -2448,6 +2454,39 @@ function _recordUsage(
     'Chapter total: ' + ch.totalCostEUR.toFixed(4) + ' EUR. ' +
     'Grand: ' + newData._usage.grandTotalEUR.toFixed(4) + ' EUR'
   );
+}
+
+// ─── ★ EO-161: Expected item count helper for dynamic token estimation ─────────────────────────
+
+function getExpectedItemCount(sectionKey: string, projectData: any): number {
+  switch (sectionKey) {
+    case 'generalObjectives':
+      return Math.max(3, projectData?.generalObjectives?.length || 3);
+    case 'specificObjectives':
+      return Math.max(5, projectData?.specificObjectives?.length || 5);
+    case 'outputs':
+      return Math.max(3, projectData?.outputs?.length || 3);
+    case 'outcomes':
+      return Math.max(3, projectData?.outcomes?.length || 3);
+    case 'impacts':
+      return Math.max(3, projectData?.impacts?.length || 3);
+    case 'risks':
+      return Math.max(5, projectData?.risks?.length || 5);
+    case 'kers':
+      return Math.max(3, projectData?.kers?.length || 3);
+    case 'causes':
+      return Math.max(3, projectData?.problemAnalysis?.causes?.length || 3);
+    case 'consequences':
+      return Math.max(3, projectData?.problemAnalysis?.consequences?.length || 3);
+    case 'policies':
+      return Math.max(3, projectData?.projectIdea?.policies?.length || 3);
+    case 'activities':
+      return Math.max(3, projectData?.activities?.length || 3);
+    case 'partners':
+      return Math.max(3, projectData?.partners?.length || 3);
+    default:
+      return 1;  // Single text sections
+  }
 }
 
 // ─── Execute section generation ────────────────────────────────
@@ -2558,7 +2597,9 @@ function _recordUsage(
             null,
             signal,
             _approvedSourcesBlock || undefined,
-            _execRefsEnabled
+            _execRefsEnabled,
+            false,  // ★ EO-161: not composite
+            0       // ★ EO-161: fresh retry count
           );
 
         } else if (sectionKey === 'partnerAllocations') {
@@ -2643,7 +2684,9 @@ function _recordUsage(
               null,
               signal,
               undefined,
-              _execRefsEnabled
+              _execRefsEnabled,
+              false,  // ★ EO-161: not composite
+              0       // ★ EO-161: fresh retry count
             );
           } else if (mode === 'enhance') {
             setIsLoading(
@@ -2659,7 +2702,9 @@ function _recordUsage(
               null,
               signal,
               undefined,
-              _execRefsEnabled
+              _execRefsEnabled,
+              false,  // ★ EO-161: not composite
+              0       // ★ EO-161: fresh retry count
             );
           } else {
             const needsFill = existingPartners.some((p: any) =>
@@ -2679,7 +2724,9 @@ function _recordUsage(
                 null,
                 signal,
                 undefined,
-                _execRefsEnabled
+                _execRefsEnabled,
+                false,  // ★ EO-161: not composite
+                0       // ★ EO-161: fresh retry count
               );
             } else {
               generatedData = existingPartners;
@@ -2878,7 +2925,9 @@ function _recordUsage(
               null,
               signal,
               undefined,
-              _execRefsEnabled
+              _execRefsEnabled,
+              true,  // ★ EO-161: composite section
+              0      // ★ EO-161: fresh retry count
             );
 
           } else {
@@ -3055,10 +3104,10 @@ function _recordUsage(
               null,
               signal,
               undefined,
-              _execRefsEnabled
+              _execRefsEnabled,
+              false,  // ★ EO-161: not composite
+              0       // ★ EO-161: fresh retry count
             );
-
-            // EO-142: Normalize policies field names (fill path — full regeneration)
             if (sectionKey === 'projectIdea' && generatedData?.policies && Array.isArray(generatedData.policies)) {
               generatedData.policies = generatedData.policies.map((p: any) => ({
                 name: p.name || p.title || p.policyName || '',
@@ -3257,7 +3306,9 @@ function _recordUsage(
               null,
               signal,
               _approvedSourcesBlock || undefined,
-              _execRefsEnabled
+              _execRefsEnabled,
+              false,  // ★ EO-161: not composite
+              0       // ★ EO-161: fresh retry count
             );
           }
 
@@ -3275,7 +3326,9 @@ function _recordUsage(
             null,
             signal,
             _approvedSourcesBlock || undefined,
-            _execRefsEnabled
+            _execRefsEnabled,
+            false,  // ★ EO-161: not composite
+            0       // ★ EO-161: fresh retry count
           );
         }
         // EO-137: AI generation complete
@@ -3283,7 +3336,11 @@ function _recordUsage(
 
         // [EO-138] Record token usage for single-section generation
         if (generatedData?._usage) {
-          _recordUsage(projectData as any, sectionKey, generatedData._usage, 'single');
+          try {
+            _recordUsage(projectData as any, sectionKey, generatedData._usage, 'single');
+          } catch (usageErr) {
+            console.warn('[EO-160c] _recordUsage failed for', sectionKey, usageErr);
+          }
         }
 
         // ★ DIAGNOSTIC: Log what AI actually returned
@@ -4595,7 +4652,9 @@ function _recordUsage(
 
               successCount++;
               // [EO-138] Record PM usage
-              if (pmContentRaw?._usage) _recordUsage(newData, 'projectManagement', pmContentRaw._usage, 'composite');
+              if (pmContentRaw?._usage) try {
+                _recordUsage(newData, 'projectManagement', pmContentRaw._usage, 'composite');
+              } catch (usageErr) { console.warn('[EO-160c] _recordUsage failed for projectManagement', usageErr); }
               _updatePhase('step1_pm', 'completed'); // [EO-137b]
                             // ★ EO-095: Cache successful PM result
 
@@ -4697,7 +4756,9 @@ function _recordUsage(
                 newData.partners = partnersResult;
                 successCount++;
                 // [EO-138] Record partners usage
-                if (partnersResult?._usage) _recordUsage(newData, 'partners', partnersResult._usage, 'composite');
+                if (partnersResult?._usage) try {
+                  _recordUsage(newData, 'partners', partnersResult._usage, 'composite');
+                } catch (usageErr) { console.warn('[EO-160c] _recordUsage failed for partners', usageErr); }
                 _updatePhase('step2_partners', 'completed'); // [EO-137b]
                 // ★ EO-095: Cache successful partners result
                 if (currentProjectId) _cacheSectionResult(currentProjectId, 'partners', language, newData.partners);
@@ -4870,7 +4931,9 @@ function _recordUsage(
               successCount++;
 
               // [EO-138] Record activities usage (enhance path carries _usage directly)
-              if ((activitiesResult as any)?._usage) _recordUsage(newData, 'activities', (activitiesResult as any)._usage, 'composite');
+              if ((activitiesResult as any)?._usage) try {
+                _recordUsage(newData, 'activities', (activitiesResult as any)._usage, 'composite');
+              } catch (usageErr) { console.warn('[EO-160c] _recordUsage failed for activities', usageErr); }
               _updatePhase('step3_activities', 'completed'); // [EO-137b]
               setGenerationProgress(prev => prev ? { ...prev, subProgress: '' } : prev); // [EO-137b] clear WP detail
 
@@ -5050,7 +5113,9 @@ function _recordUsage(
               }
               successCount++;
               // [EO-138] Record risks usage
-              if (risksContentRaw?._usage) _recordUsage(newData, 'risks', risksContentRaw._usage, 'composite');
+              if (risksContentRaw?._usage) try {
+                _recordUsage(newData, 'risks', risksContentRaw._usage, 'composite');
+              } catch (usageErr) { console.warn('[EO-160c] _recordUsage failed for risks', usageErr); }
               _updatePhase('step5_risks', 'completed'); // [EO-137b]
               // ★ EO-095: Cache successful risks result
               if (currentProjectId) _cacheSectionResult(currentProjectId, 'risks', language, newData.risks);
@@ -5531,7 +5596,10 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                   } else {
                     const genMode = action === 'generate' ? 'regenerate' : action;
                     generatedData = await generateSectionContent(
-                      s, projectData, language, genMode, null, signal, undefined, _compRefsEnabled
+                      s, projectData, language, genMode, null, signal, undefined,
+                      _compRefsEnabled,
+                      true,  // ★ EO-161: composite section
+                      0      // ★ EO-161: fresh retry count
                     );
                   }
 
@@ -5575,7 +5643,9 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
 
                   // [EO-138] Record usage per ER composite step
                   if (generatedData?._usage) {
-                    _recordUsage(projectData as any, s, generatedData._usage, 'composite');
+                    try {
+                      _recordUsage(projectData as any, s, generatedData._usage, 'composite');
+                    } catch (usageErr) { console.warn('[EO-160c] _recordUsage failed for', s, usageErr); }
                   }
 
                   // [EO-130i] Guard: only run reference pipeline when refs are enabled for this chapter

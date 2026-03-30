@@ -1,5 +1,13 @@
 // ═══════════════════════════════════════════════════════════════
 // services/geminiService.ts
+// v7.32 — 2026-03-27 — EO-162b: Fixed schema: → jsonSchema: in all generateContent calls.
+//         getPromptAndSchemaForSection now returns jsonSchema: (not schema:).
+//         Destructure updated. All 4 call sites fixed (lines ~1355, ~1461, ~1585, ~2128).
+//         EO-119 had already fixed WP allocation calls (lines ~2501, ~2520). Gemini now
+//         receives responseSchema and returns raw JSON instead of markdown-wrapped blocks.
+// v7.31 — 2026-03-26 — EO-161: Truncation detection + auto-retry (up to 2x, doubling token limit).
+//         generateSectionContent passes referencesEnabled/expectedItemCount/isComposite into generateContent.
+//         Bilingual truncation-specific error messages. getExpectedItemCountFromProjectData() helper added.
 // v7.30 — 2026-03-26 — EO-159: BUG12 object-root schema for objectives/results/risks/kers.
 //         BUG18: _referenceEntrySchema requires year+inlineMarker. BUG28: conditional getReferencesRequirement.
 // v7.29 — 2026-03-23 — EO-141: Per-chapter citation prefix. _GS_CHAPTER_PREFIX + _gsGetPrefix + _buildCitationEnforcement(prefix).
@@ -87,6 +95,7 @@ import {
   validateProviderKey,
   getProviderConfig,
   sanitizeJSONResponse,
+  calculateDynamicTokenLimit,
   type AIProviderType
 } from './aiProvider.ts';
 
@@ -1348,13 +1357,45 @@ const getPromptAndSchemaForSection = (
 
   return {
     prompt,
-    schema: needsTextSchema ? null : schema
+    jsonSchema: needsTextSchema ? undefined : schema  // ★ EO-162b: was schema: (unknown field) + null → undefined
   };
 };
 
 // ═══════════════════════════════════════════════════════════════
 // PUBLIC API: SECTION GENERATION
 // ═══════════════════════════════════════════════════════════════
+
+// ★ EO-161: Estimate expected item count for dynamic token calculation
+function getExpectedItemCountFromProjectData(sectionKey: string, projectData: any): number {
+  switch (sectionKey) {
+    case 'generalObjectives':
+      return Math.max(3, projectData?.generalObjectives?.length || 3);
+    case 'specificObjectives':
+      return Math.max(5, projectData?.specificObjectives?.length || 5);
+    case 'outputs':
+      return Math.max(3, projectData?.outputs?.length || 3);
+    case 'outcomes':
+      return Math.max(3, projectData?.outcomes?.length || 3);
+    case 'impacts':
+      return Math.max(3, projectData?.impacts?.length || 3);
+    case 'risks':
+      return Math.max(5, projectData?.risks?.length || 5);
+    case 'kers':
+      return Math.max(3, projectData?.kers?.length || 3);
+    case 'causes':
+      return Math.max(3, projectData?.problemAnalysis?.causes?.length || 3);
+    case 'consequences':
+      return Math.max(3, projectData?.problemAnalysis?.consequences?.length || 3);
+    case 'policies':
+      return Math.max(3, projectData?.projectIdea?.policies?.length || 3);
+    case 'activities':
+      return Math.max(3, projectData?.activities?.length || 3);
+    case 'partners':
+      return Math.max(3, projectData?.partners?.length || 3);
+    default:
+      return 1;  // Single text sections
+  }
+}
 
 export const generateSectionContent = async (
   sectionKey: string,
@@ -1364,7 +1405,9 @@ export const generateSectionContent = async (
   currentSectionData: any = null,
   signal?: AbortSignal,
   approvedSourcesBlock?: string,
-  referencesEnabled?: boolean   // EO-130: when false, uses CITATION_WITHOUT_REFERENCES prompt variant
+  referencesEnabled?: boolean,   // EO-130: when false, uses CITATION_WITHOUT_REFERENCES prompt variant
+  _eo161IsComposite?: boolean,   // ★ EO-161: composite runner flag for token estimation
+  _eo161RetryCount?: number      // ★ EO-161: internal truncation retry counter (do not pass from callers)
 ): Promise<any> => {
   if (signal?.aborted) throw new DOMException('Generation cancelled', 'AbortError');
 
@@ -1380,7 +1423,7 @@ export const generateSectionContent = async (
     fullPrompt = projectData._customPromptOverride;
     schemaForRequest = undefined;
   } else {
-    const { prompt, schema } = getPromptAndSchemaForSection(
+    const { prompt, jsonSchema: _sectionJsonSchema } = getPromptAndSchemaForSection(  // ★ EO-162b: renamed schema→jsonSchema
       sectionKey,
       projectData,
       language,
@@ -1406,17 +1449,29 @@ export const generateSectionContent = async (
       if (kbContext) fullPrompt = kbContext + '\n\n' + fullPrompt;
     }
 
-    schemaForRequest = schema || undefined;
+    schemaForRequest = _sectionJsonSchema || undefined;
   }
 
   if (signal?.aborted) throw new DOMException('Generation cancelled', 'AbortError');
 
+  // ★ EO-161: Compute dynamic token params from projectData
+  const _eo161ExpectedItems = getExpectedItemCountFromProjectData(sectionKey, projectData);
+  const _eo161PrevTokens: number | undefined =
+    (_eo161RetryCount && _eo161RetryCount > 0)
+      ? undefined  // retry path: previousOutputTokens is already baked into the forced limit below
+      : ((window as any).__lastOutputTokens?.[sectionKey] || undefined);
+
   const result = await generateContent({
     prompt: fullPrompt,
-    schema: schemaForRequest,
+    jsonSchema: schemaForRequest,  // ★ EO-162b: was schema: (silently ignored by AIGenerateOptions)
     jsonMode: true,
     sectionKey,
     signal,
+    // ★ EO-161: dynamic token estimation params
+    referencesEnabled: _refsOn,
+    expectedItemCount: _eo161ExpectedItems,
+    previousOutputTokens: _eo161PrevTokens,
+    isComposite: _eo161IsComposite ?? false,
   });
 
   // [EO-138] Capture token usage for cost tracking — will be attached to parsed before return
@@ -1532,7 +1587,7 @@ export const generateSectionContent = async (
           + fullPrompt;
         var _eo110Result = await generateContent({
           prompt: _eo110RetryPrompt,
-          schema: schemaForRequest,
+          jsonSchema: schemaForRequest,  // ★ EO-162b: was schema: (silently ignored)
           jsonMode: true,
           sectionKey: sectionKey,
           signal: signal,
@@ -1548,7 +1603,49 @@ export const generateSectionContent = async (
 
     if (!recovered) {
       console.error('[geminiService] All JSON recovery attempts FAILED (including EO-110). Raw text:', _rawText.substring(0, 500));
-      throw new Error('AI response was not valid JSON');
+
+      // ★ EO-161 CHANGE E: Detect truncation and auto-retry with higher token limit
+      const _isLikelyTruncated = _rawText && _rawText.length > 500 &&
+        !_rawText.trim().endsWith('}') && !_rawText.trim().endsWith(']');
+
+      const _retryCount = _eo161RetryCount || 0;
+
+      if (_isLikelyTruncated && _retryCount < 2) {
+        // Estimate current limit from previous tokens or ABSOLUTE_MAX / 2 as floor
+        const _currentPrevTokens = (window as any).__lastOutputTokens?.[sectionKey] || 8192;
+        const _newForcedTokens = Math.min(_currentPrevTokens * 2, 65536);
+
+        console.warn(`[EO-161] Truncated JSON detected for "${sectionKey}" ` +
+          `(response ends with: "...${_rawText.slice(-50)}"). ` +
+          `Auto-retrying (${_retryCount + 1}/2) with forced previousOutputTokens ${_currentPrevTokens} → ${_newForcedTokens}`);
+
+        // Store the forced higher limit so calculateDynamicTokenLimit picks it up
+        if (!(window as any).__lastOutputTokens) (window as any).__lastOutputTokens = {};
+        (window as any).__lastOutputTokens[sectionKey] = _newForcedTokens;
+
+        return await generateSectionContent(
+          sectionKey,
+          projectData,
+          language,
+          mode,
+          currentSectionData,
+          signal,
+          approvedSourcesBlock,
+          referencesEnabled,
+          _eo161IsComposite,
+          _retryCount + 1
+        );
+      }
+
+      // ★ EO-161 CHANGE F: Descriptive bilingual error messages
+      if (_isLikelyTruncated) {
+        const _truncMsg = language === 'si'
+          ? 'AI model je vrnil predolg odgovor, ki je bil prekinjen. Sistem je poskusil znova z večjim limitom, ampak ni uspel. Poskusite generirati z manj elementi ali krajšimi opisi.'
+          : 'The AI model generated a response that was too long and got cut off. The system retried with a higher limit but did not succeed. Try generating with fewer items or shorter descriptions.';
+        throw new Error('AI response was truncated after ' + _retryCount + ' retries. ' + _truncMsg);
+      }
+
+      throw new Error('AI response was not valid JSON. Please try again.');
     }
   }
 
@@ -2033,7 +2130,7 @@ export const generateObjectFill = async (
 
   const result = await generateContent({
     prompt: finalPrompt,
-    schema: schema || undefined,
+    jsonSchema: schema || undefined,  // ★ EO-162b: was schema: (silently ignored by AIGenerateOptions)
     jsonMode: true,
     sectionKey,
     signal,

@@ -682,6 +682,22 @@ var handleRedo = useCallback(function() {
               const safeEn = en ? safeMerge(en) : null;
               const safeSi = si ? safeMerge(si) : null;
 
+              // ★ EO-160c: Reset costs ONLY when a DIFFERENT user imports the project
+              const _eo160cCurrentUser = await storageService.getCurrentUserId();
+              const _eo160cOwner = importedJson._ownerId
+                || importedJson.meta?.userId
+                || importedJson.meta?.ownerId
+                || (en?._ownerId) || (si?._ownerId) || null;
+              const _eo160cDifferentUser = _eo160cCurrentUser && _eo160cOwner && _eo160cCurrentUser !== _eo160cOwner;
+              if (_eo160cDifferentUser) {
+                console.log('[EO-160c] Different user detected (current:', _eo160cCurrentUser, 'owner:', _eo160cOwner, ') — resetting cost data');
+                const _resetCosts = (d: any) => { if (!d) return; d._usage = {}; d._projectUsage = { totalTokensIn: 0, totalTokensOut: 0, totalCost: 0, totalCalls: 0 }; d._generationMeta = {}; d._costRecords = []; };
+                if (safeEn) _resetCosts(safeEn);
+                if (safeSi) _resetCosts(safeSi);
+              } else {
+                console.log('[EO-160c] Same user or unknown owner — preserving cost data');
+              }
+
               if (safeEn) await storageService.saveProject(safeEn, 'en', newProj.id);
               if (safeSi) await storageService.saveProject(safeSi, 'si', newProj.id);
 
@@ -696,6 +712,20 @@ var handleRedo = useCallback(function() {
               const detectedLang = detectProjectLanguage(importedJson);
               finalData = safeMerge(importedJson);
               targetLang = detectedLang as 'en' | 'si';
+
+              // ★ EO-160c: Reset costs ONLY when a DIFFERENT user imports the project
+              const _eo160cCurrentUser2 = await storageService.getCurrentUserId();
+              const _eo160cOwner2 = importedJson._ownerId || importedJson.metadata?.userId || importedJson.metadata?.ownerId || null;
+              if (_eo160cCurrentUser2 && _eo160cOwner2 && _eo160cCurrentUser2 !== _eo160cOwner2) {
+                console.log('[EO-160c] Different user detected (current:', _eo160cCurrentUser2, 'owner:', _eo160cOwner2, ') — resetting cost data');
+                finalData._usage = {};
+                finalData._projectUsage = { totalTokensIn: 0, totalTokensOut: 0, totalCost: 0, totalCalls: 0 };
+                finalData._generationMeta = {};
+                finalData._costRecords = [];
+              } else {
+                console.log('[EO-160c] Same user or unknown owner — preserving cost data');
+              }
+
               await storageService.saveProject(finalData, targetLang, newProj.id);
             } else {
               throw new Error(

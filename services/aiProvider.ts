@@ -1,8 +1,13 @@
 // services/aiProvider.ts
 // ═══════════════════════════════════════════════════════════════
-// Universal AI Provider Abstraction Layer – v6.23 (2026-03-26)
+// Universal AI Provider Abstraction Layer – v6.24 (2026-03-26)
 // ═══════════════════════════════════════════════════════════════ 
 // CHANGELOG:
+// v6.24 — 2026-03-26 — EO-161: Dynamic token limit calculator + truncation auto-retry.
+//         calculateDynamicTokenLimit() replaces getMaxTokensForSection() in all three provider adapters.
+//         AIGenerateOptions extended with referencesEnabled/expectedItemCount/previousOutputTokens/isComposite.
+//         window.__lastOutputTokens stores per-section output token counts for session-level estimation.
+//         ABSOLUTE_MAX=65536, ABSOLUTE_MIN=4096, SAFETY_MULTIPLIER=1.4.
 // v6.23 — 2026-03-26 — EO-159 BUG1: scrubHallucinatedReferences() — URL domain blacklist + fake DOI prefix detection.
 // v6.22 — 2026-03-24 — EO-155: Increased maxOutputTokens from 8192 to 16384 to prevent KERs/Activities JSON truncation on long composite sections.
 //                               EO-157: Filter hallucinated authors (Vertex AI Search, Google, Gemini) from Gemini grounding chunk titles.
@@ -340,6 +345,11 @@ export interface AIGenerateOptions {
   taskType?: AITaskType;
   signal?: AbortSignal;
   forceGoogleSearch?: boolean;  // EO-148: force google_search grounding regardless of sectionKey/user setting
+  // ★ EO-161: Dynamic token estimation params
+  referencesEnabled?: boolean;
+  expectedItemCount?: number;
+  previousOutputTokens?: number;
+  isComposite?: boolean;
 }
 
 export interface AIGenerateResult {
@@ -417,7 +427,108 @@ const LIGHT_MODEL_TASKS: Set<AITaskType> = new Set([
   'translation', 'chatbot', 'field', 'allocation', 'summary'
 ]);
 
-// ─── DYNAMIC MAX_TOKENS PER SECTION ──────────────────────────────
+// ─── ★ EO-161: DYNAMIC TOKEN LIMIT CALCULATOR ─────────────────────
+// Replaces ALL static maxOutputTokens values with intelligent estimation.
+// Called by all three provider adapters (Gemini, OpenRouter, OpenAI).
+
+export interface TokenEstimateParams {
+  sectionKey: string;
+  promptLength: number;          // character count of full prompt
+  referencesEnabled: boolean;
+  expectedItemCount?: number;    // e.g. 5 objectives, 8 risks
+  previousOutputTokens?: number; // last known output for this section (from window.__lastOutputTokens)
+  isComposite?: boolean;         // composite runner (Activities, ER)
+}
+
+const ABSOLUTE_MIN = 4096;
+const ABSOLUTE_MAX = 65536;  // Gemini 2.5 Pro supports up to 65536
+const SAFETY_MULTIPLIER = 1.4;  // 40% headroom above estimate
+
+export function calculateDynamicTokenLimit(params: TokenEstimateParams): number {
+  const {
+    sectionKey,
+    promptLength,
+    referencesEnabled,
+    expectedItemCount = 1,
+    previousOutputTokens,
+    isComposite = false,
+  } = params;
+
+  // ── Base estimation per section type ──
+  const BASE_TOKENS_PER_ITEM: Record<string, number> = {
+    // Simple text sections (~500-800 tokens each)
+    'coreProblem':       800,
+    'mainAim':           600,
+    'stateOfTheArt':    1500,
+    'proposedSolution': 1500,
+    'causes':            600,
+    'consequences':      600,
+    'policies':          500,
+    'readinessLevels':   400,
+    'projectManagement': 2000,
+
+    // Array sections — tokens PER ITEM
+    'generalObjectives':  800,
+    'specificObjectives': 800,
+    'outputs':            800,
+    'outcomes':           800,
+    'impacts':            800,
+    'risks':              700,
+    'kers':              1000,
+
+    // Composite sections
+    'activities': 3000,  // per WP
+    'partners':    800,  // per partner
+  };
+
+  const basePerItem = BASE_TOKENS_PER_ITEM[sectionKey] || 800;
+  let estimatedTokens = basePerItem * Math.max(expectedItemCount, 1);
+
+  // ── Reference overhead ──
+  if (referencesEnabled) {
+    // Each reference adds ~200 tokens (author, title, year, url, marker)
+    // Estimate ~2 refs per item for most sections
+    const estimatedRefs = expectedItemCount * 2;
+    estimatedTokens += estimatedRefs * 200;
+    // _references JSON array structure overhead
+    estimatedTokens += 500;
+  }
+
+  // ── Composite section multiplier ──
+  if (isComposite) {
+    estimatedTokens *= 1.5;  // Composites have more structure
+  }
+
+  // ── Prompt length correlation ──
+  // Longer prompts tend to produce longer outputs
+  const promptTokenEstimate = promptLength / 4;  // ~4 chars per token
+  if (promptTokenEstimate > 5000) {
+    estimatedTokens = Math.max(estimatedTokens, promptTokenEstimate * 0.5);
+  }
+
+  // ── Historical data adjustment ──
+  if (previousOutputTokens && previousOutputTokens > 0) {
+    // If we know how many tokens were used last time, use that as baseline
+    estimatedTokens = Math.max(estimatedTokens, previousOutputTokens * SAFETY_MULTIPLIER);
+  }
+
+  // ── Apply safety multiplier ──
+  let finalLimit = Math.ceil(estimatedTokens * SAFETY_MULTIPLIER);
+
+  // ── Clamp to boundaries ──
+  finalLimit = Math.max(ABSOLUTE_MIN, Math.min(ABSOLUTE_MAX, finalLimit));
+
+  // ── Round up to nearest 1024 for cleanliness ──
+  finalLimit = Math.ceil(finalLimit / 1024) * 1024;
+
+  console.log(`[EO-161] Token limit for "${sectionKey}": ${finalLimit} ` +
+    `(items=${expectedItemCount}, refs=${referencesEnabled}, ` +
+    `base=${basePerItem * Math.max(expectedItemCount, 1)}, prev=${previousOutputTokens || 'N/A'})`);
+
+  return finalLimit;
+}
+
+// ─── LEGACY STATIC TOKEN MAP (kept for reference / non-EO-161 paths) ──────────────────────────────
 
 const SECTION_MAX_TOKENS: Record<string, number> = {
   activities:          16384,
@@ -800,8 +911,16 @@ if (options.jsonSchema) {
 if (options.temperature !== undefined) {
   generateConfig.temperature = options.temperature;
 }
-// EO-081: Explicit maxOutputTokens for Gemini — matches OpenRouter/OpenAI dynamic limits
-generateConfig.maxOutputTokens = getMaxTokensForSection(options.sectionKey);
+// ★ EO-161: Dynamic token limit replaces static getMaxTokensForSection()
+generateConfig.maxOutputTokens = calculateDynamicTokenLimit({
+  sectionKey: options.sectionKey || 'unknown',
+  promptLength: options.prompt.length,
+  referencesEnabled: options.referencesEnabled ?? false,
+  expectedItemCount: options.expectedItemCount ?? 1,
+  previousOutputTokens: options.previousOutputTokens
+    ?? ((window as any).__lastOutputTokens?.[options.sectionKey || ''] || undefined),
+  isComposite: options.isComposite ?? false,
+});
 
   var geminiPrompt = options.prompt;
   // EO-148: forceGoogleSearch bypasses storageService/sectionKey eligibility for repair calls
@@ -873,6 +992,12 @@ generateConfig.maxOutputTokens = getMaxTokensForSection(options.sectionKey);
     const _geminiOut: number = _geminiUsage?.candidatesTokenCount ?? 0;
     const _geminiTotal: number = _geminiUsage?.totalTokenCount ?? (_geminiIn + _geminiOut);
     console.log('[EO-138] API usage: gemini', config.model, 'in:', _geminiIn, 'out:', _geminiOut);
+    // ★ EO-161: Store output tokens per section for future dynamic estimation
+    if (options.sectionKey && _geminiOut > 0) {
+      if (!(window as any).__lastOutputTokens) (window as any).__lastOutputTokens = {};
+      (window as any).__lastOutputTokens[options.sectionKey] = _geminiOut;
+      console.log(`[EO-161] Stored ${_geminiOut} output tokens for "${options.sectionKey}"`);
+    }
     return {
       text: response.text.trim(),
       _usage: { provider: 'gemini', model: config.model, inputTokens: _geminiIn, outputTokens: _geminiOut, totalTokens: _geminiTotal },
@@ -897,7 +1022,16 @@ async function generateWithOpenRouter(config: AIProviderConfig, options: AIGener
     messages.unshift({ role: 'system', content: OPENROUTER_SYSTEM_PROMPT });
   }
 
-  const maxTokens = getMaxTokensForSection(options.sectionKey);
+  // ★ EO-161: Dynamic token limit replaces static getMaxTokensForSection()
+  const maxTokens = calculateDynamicTokenLimit({
+    sectionKey: options.sectionKey || 'unknown',
+    promptLength: options.prompt.length,
+    referencesEnabled: options.referencesEnabled ?? false,
+    expectedItemCount: options.expectedItemCount ?? 1,
+    previousOutputTokens: options.previousOutputTokens
+      ?? ((window as any).__lastOutputTokens?.[options.sectionKey || ''] || undefined),
+    isComposite: options.isComposite ?? false,
+  });
 
   const body: any = {
     model: config.model,
@@ -1000,6 +1134,12 @@ async function generateWithOpenRouter(config: AIProviderConfig, options: AIGener
     const _orOut: number = data.usage?.completion_tokens ?? 0;
     const _orTotal: number = data.usage?.total_tokens ?? (_orIn + _orOut);
     console.log('[EO-138] API usage: openrouter', config.model, 'in:', _orIn, 'out:', _orOut);
+    // ★ EO-161: Store output tokens per section for future dynamic estimation
+    if (options.sectionKey && _orOut > 0) {
+      if (!(window as any).__lastOutputTokens) (window as any).__lastOutputTokens = {};
+      (window as any).__lastOutputTokens[options.sectionKey] = _orOut;
+      console.log(`[EO-161] Stored ${_orOut} output tokens for "${options.sectionKey}"`);
+    }
     return {
       text,
       _usage: { provider: 'openrouter', model: config.model, inputTokens: _orIn, outputTokens: _orOut, totalTokens: _orTotal },
@@ -1053,7 +1193,16 @@ async function generateWithOpenAI(config: AIProviderConfig, options: AIGenerateO
 
   messages.push({ role: 'user', content: options.prompt });
 
-  const maxTokens = getMaxTokensForSection(options.sectionKey);
+  // ★ EO-161: Dynamic token limit replaces static getMaxTokensForSection()
+  const maxTokens = calculateDynamicTokenLimit({
+    sectionKey: options.sectionKey || 'unknown',
+    promptLength: options.prompt.length,
+    referencesEnabled: options.referencesEnabled ?? false,
+    expectedItemCount: options.expectedItemCount ?? 1,
+    previousOutputTokens: options.previousOutputTokens
+      ?? ((window as any).__lastOutputTokens?.[options.sectionKey || ''] || undefined),
+    isComposite: options.isComposite ?? false,
+  });
 
   const body: any = {
     model: config.model,
@@ -1114,6 +1263,12 @@ async function generateWithOpenAI(config: AIProviderConfig, options: AIGenerateO
     const _oaiOut: number = data.usage?.completion_tokens ?? 0;
     const _oaiTotal: number = data.usage?.total_tokens ?? (_oaiIn + _oaiOut);
     console.log('[EO-138] API usage: openai', config.model, 'in:', _oaiIn, 'out:', _oaiOut);
+    // ★ EO-161: Store output tokens per section for future dynamic estimation
+    if (options.sectionKey && _oaiOut > 0) {
+      if (!(window as any).__lastOutputTokens) (window as any).__lastOutputTokens = {};
+      (window as any).__lastOutputTokens[options.sectionKey] = _oaiOut;
+      console.log(`[EO-161] Stored ${_oaiOut} output tokens for "${options.sectionKey}"`);
+    }
     return {
       text,
       _usage: { provider: 'openai', model: config.model, inputTokens: _oaiIn, outputTokens: _oaiOut, totalTokens: _oaiTotal },
