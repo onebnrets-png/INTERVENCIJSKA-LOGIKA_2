@@ -1,5 +1,7 @@
 // components/ProjectDisplay.tsx
 // ═══════════════════════════════════════════════════════════════
+// v7.39 — 2026-03-30 — EO-163b: Add [EO-163b] debug log in FieldCitationsPreview (available markers)
+//         and warn log when reference lookup fails. Aids in diagnosing [SO-1] "not found" issue.
 // v7.38 — 2026-03-26 — EO-159: BUG5 refs OFF/ON stale lifecycle in SectionGenerateWithToggle.
 //         BUG24 extractMarkerNumber in FieldCitationsPreview sort.
 //         BUG25 APA format fallback in findReferenceByInlineMarker.
@@ -434,6 +436,14 @@ const SectionGenerateWithToggle = ({ sectionKey, projectData, onUpdateData, onGe
 const FieldCitationsPreview = ({ text, references, sectionKey, language }: { text: string, references: any[], sectionKey: string, language: string }) => {
     if (!text || !text.includes('[')) return null;
 
+    // ★ EO-163b: Debug log — show all available references and their stripped markers
+    console.log('[EO-163b] FieldCitationsPreview — sectionKey:', sectionKey, '| Available references:', (Array.isArray(references) ? references : []).map(r => ({
+      inlineMarker: r.inlineMarker,
+      stripped: stripBrackets(r.inlineMarker),
+      sectionKey: r.sectionKey,
+      title: (r.title || '').substring(0, 40),
+    })));
+
     // EO-141: Match both [PA-1] prefixed and legacy [1] formats, plus [N, M] multi-citation
     const regex = /(?:\(([^)]*?\d{4}[^)]*)\)\s*)?\[([A-Z]{2,3}-\d+|\d+(?:,\s*\d+)*)\]/g;
     let match;
@@ -454,6 +464,12 @@ const FieldCitationsPreview = ({ text, references, sectionKey, language }: { tex
             if (!seen.has(markerStr)) {
                 seen.add(markerStr);
                 const refEntry = findReferenceByInlineMarker(markerStr, references, sectionKey);
+                if (!refEntry) {
+                  console.warn('[EO-163b] Reference not found for marker:', markerStr,
+                    '| normalized:', stripBrackets(markerStr),
+                    '| sectionKey:', sectionKey,
+                    '| available markers:', (Array.isArray(references) ? references : []).map(r => r.inlineMarker).join(', '));
+                }
                 citedRefs.push({ markerStr, refEntry: refEntry || null, missing: !refEntry });
             }
         }

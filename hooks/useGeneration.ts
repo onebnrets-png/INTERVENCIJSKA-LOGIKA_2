@@ -1,6 +1,9 @@
 // hooks/useGeneration.ts
 // ═══════════════════════════════════════════════════════════════ 
 // AI content generation — sections, fields, summaries.
+// v7.74 — 2026-03-30 — EO-163b: Cross-project save guard in executeGeneration and runComposite.
+//         Capture _generationStartProjectId at start; _guardedSaveProject blocks all saves if
+//         currentProjectId changed during the async operation (user switched project mid-generation).
 // v7.73 — 2026-03-27 — EO-160c: Harden _recordUsage — guard against _usage={} (no .chapters)
 //         caused TypeError crash after EO-160 reset. Also added try-catch on all call sites.
 // v7.72 — 2026-03-26 — EO-161: Pass referencesEnabled/expectedItemCount/isComposite to all
@@ -2495,6 +2498,21 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
     async (sectionKey: string, mode: string = 'regenerate', repairInstructions?: string) => {
       if (!preGenerationGuard(sectionKey)) return;
 
+      // ★ EO-163b: Capture project ID at generation START — used to detect if user switched
+      // projects during the async AI call. All saveProject calls go through _guardedSaveProject.
+      const _generationStartProjectId = currentProjectId;
+      const _guardedSaveProject = (data: any, lang: string, projId: string | null): Promise<void> => {
+        if (projId !== _generationStartProjectId) {
+          console.error('[EO-163b] _guardedSaveProject BLOCKED — project changed during generation!', {
+            startedFor: _generationStartProjectId,
+            currentlyActive: projId,
+            sectionKey,
+          });
+          return Promise.resolve();
+        }
+        return storageService.saveProject(data, lang, projId);
+      };
+
       // EO-141: Migrate legacy [N] refs to prefix format on first generation
       if (Array.isArray(projectData.references) && projectData.references.length > 0) {
         const _migrated = _migrateReferencesToPrefixFormat(projectData);
@@ -4048,8 +4066,8 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
                   setProjectData(function(prev: any) {
                     var savedData = Object.assign({}, prev, newData);
                     if (currentProjectId) {
-                      storageService.saveProject(savedData, language, currentProjectId)
-                        .then(function() { console.log('[executeGeneration] ★ Forced save after validation override'); })
+                      _guardedSaveProject(savedData, language, currentProjectId)
+                        .then(function() { console.log('[EO-163b][executeGeneration] ★ Forced save after validation override'); })
                         .catch(function(e: any) { console.error('[executeGeneration] ★ Forced save failed:', e); });
                     }
                     return savedData;
@@ -4167,9 +4185,9 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
           const _saveStart = performance.now();
           const savedData = { ...prev, ...newData };
           if (currentProjectId) {
-            storageService.saveProject(savedData, language, currentProjectId)
+            _guardedSaveProject(savedData, language, currentProjectId)
               .then(() => {
-                console.log(`[executeGeneration] ★ Explicit save after ${sectionKey} — lang=${language}, generalObjectives: ${Array.isArray(savedData.generalObjectives) && savedData.generalObjectives.some((o: any) => o.title?.trim()) ? '✅ HAS' : '⚠️ EMPTY'}`);
+                console.log(`[EO-163b][executeGeneration] ★ Explicit save after ${sectionKey} — lang=${language}, generalObjectives: ${Array.isArray(savedData.generalObjectives) && savedData.generalObjectives.some((o: any) => o.title?.trim()) ? '✅ HAS' : '⚠️ EMPTY'}`);
                 _updatePhase('saving', 'completed', performance.now() - _saveStart);
               })
               .catch((e: any) => {
@@ -4507,6 +4525,20 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
             const runComposite = async (mode: string) => {
         if (!preGenerationGuard(`composite-${compositeSectionKey}`)) return;
 
+        // ★ EO-163b: Capture project ID at composite start — guard all saves against mid-run switch
+        const _compositeStartProjectId = currentProjectId;
+        const _guardedSaveComposite = (data: any, lang: string, projId: string | null): Promise<void> => {
+          if (projId !== _compositeStartProjectId) {
+            console.error('[EO-163b] _guardedSaveComposite BLOCKED — project changed during composite generation!', {
+              startedFor: _compositeStartProjectId,
+              currentlyActive: projId,
+              compositeSectionKey,
+            });
+            return Promise.resolve();
+          }
+          return storageService.saveProject(data, lang, projId);
+        };
+
         isGeneratingRef.current = true;
         sessionCallCountRef.current++;
 
@@ -4674,7 +4706,7 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
                 setProjectData(function(prev: any) {
                   var savedData = Object.assign({}, prev, newData);
                   if (currentProjectId) {
-                    storageService.saveProject(savedData, language, currentProjectId).catch(function(se: any) { console.error('[EO-104] Save failed:', se); });
+                    _guardedSaveComposite(savedData, language, currentProjectId).catch(function(se: any) { console.error('[EO-104] Save failed:', se); });
                   }
                   return savedData;
                 });
@@ -4774,7 +4806,7 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
                 setProjectData(function(prev: any) {
                   var savedData = Object.assign({}, prev, newData);
                   if (currentProjectId) {
-                    storageService.saveProject(savedData, language, currentProjectId).catch(function(se: any) { console.error('[EO-104] Save failed:', se); });
+                    _guardedSaveComposite(savedData, language, currentProjectId).catch(function(se: any) { console.error('[EO-104] Save failed:', se); });
                   }
                   return savedData;
                 });
@@ -4951,7 +4983,7 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
                 setProjectData(function(prev: any) {
                   var savedData = Object.assign({}, prev, newData);
                   if (currentProjectId) {
-                    storageService.saveProject(savedData, language, currentProjectId).catch(function(se: any) { console.error('[EO-104] Save failed:', se); });
+                    _guardedSaveComposite(savedData, language, currentProjectId).catch(function(se: any) { console.error('[EO-104] Save failed:', se); });
                   }
                   return savedData;
                 });
@@ -5027,7 +5059,7 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
                   setProjectData(function(prev: any) {
                     var savedData = Object.assign({}, prev, newData);
                     if (currentProjectId) {
-                      storageService.saveProject(savedData, language, currentProjectId).catch(function(se: any) { console.error('[EO-104] Save failed:', se); });
+                      _guardedSaveComposite(savedData, language, currentProjectId).catch(function(se: any) { console.error('[EO-104] Save failed:', se); });
                     }
                     return savedData;
                   });
@@ -5130,7 +5162,7 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
                 setProjectData(function(prev: any) {
                   var savedData = Object.assign({}, prev, newData);
                   if (currentProjectId) {
-                    storageService.saveProject(savedData, language, currentProjectId).catch(function(se: any) { console.error('[EO-104] Save failed:', se); });
+                    _guardedSaveComposite(savedData, language, currentProjectId).catch(function(se: any) { console.error('[EO-104] Save failed:', se); });
                   }
                   return savedData;
                 });
@@ -5315,9 +5347,9 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
             setProjectData((prev: any) => {
               const savedData = { ...prev, ...newData };
               if (currentProjectId) {
-                storageService.saveProject(savedData, language, currentProjectId)
+                _guardedSaveComposite(savedData, language, currentProjectId)
                   .then(() => {
-                    console.log(`[Composite/activities] ★ Explicit save — SUCCESS`);
+                    console.log(`[EO-163b][Composite/activities] ★ Explicit save — SUCCESS`);
                     _updatePhase('saving', 'completed'); // [EO-137b]
                   })
                   .catch((e: any) => console.error(`[Composite/activities] ★ Explicit save failed:`, e));
@@ -5838,9 +5870,9 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                   _updatePhase('referenceProcessing', 'completed'); // [EO-137b]
                   if (currentProjectId) {
                     _updatePhase('saving', 'running'); // [EO-137b]
-                    storageService.saveProject(renumData, language, currentProjectId)
+                    _guardedSaveComposite(renumData, language, currentProjectId)
                       .then(() => {
-                        console.log('[EO-115] expectedResults composite: renumber save SUCCESS');
+                        console.log('[EO-163b][EO-115] expectedResults composite: renumber save SUCCESS');
                         _updatePhase('saving', 'completed'); // [EO-137b]
                         // EO-131: Async URL verification AFTER renumber + save
                         if (Array.isArray(renumData.references) && renumData.references.length > 0) {
@@ -5913,9 +5945,9 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                   console.log('[EO-130i] Final composite cleanup DONE for expectedResults — refs OFF');
                   if (currentProjectId) {
                     _updatePhase('saving', 'running'); // [EO-137b]
-                    storageService.saveProject(cleanData, language, currentProjectId)
+                    _guardedSaveComposite(cleanData, language, currentProjectId)
                       .then(() => {
-                        console.log('[EO-130i] expectedResults composite: no-refs save SUCCESS');
+                        console.log('[EO-163b][EO-130i] expectedResults composite: no-refs save SUCCESS');
                         _updatePhase('saving', 'completed'); // [EO-137b]
                       })
                       .catch((e: any) => console.error('[EO-130i] expectedResults composite: no-refs save failed', e));

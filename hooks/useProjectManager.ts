@@ -2,6 +2,8 @@
 // ═══════════════════════════════════════════════════════════════
 // Project CRUD, import/export, save, auto-save, navigation.
 // On login: shows project list instead of auto-loading last project.
+// v1.11 — 2026-03-30 — EO-163b: AutoSave null-guard — also block when loadedProjectIdRef is null
+//         (project switch in progress). Updated all [EO-163] log prefixes to [EO-163b].
 // v1.10 — 2026-03-30 — EO-163 BUG3: AutoSave cross-project guard — track loadedProjectIdRef
 //         to detect project switch before auto-save fires. Block save when projectId mismatch.
 // v1.9 — 2026-03-23 — EO-143: Smart AutoSave acronym guard — allow AI-generated acronym changes, update metadata
@@ -416,12 +418,18 @@ var handleRedo = useCallback(function() {
       if (!currentUser) return;
       if (!hasContent(projectData)) return;
 
-      // ★ EO-163 BUG3: Block save if projectData belongs to a different project than currentProjectId.
+      // ★ EO-163b BUG3: Block save if projectData belongs to a different project than currentProjectId.
       // Happens during project switch: React batches state updates so projectData (new project)
       // may render before currentProjectId updates, causing the new project's data to be saved
       // under the old project's ID. loadedProjectIdRef is set synchronously after load completes.
-      if (loadedProjectIdRef.current && currentProjectId && loadedProjectIdRef.current !== currentProjectId) {
-        console.warn('[EO-163] AutoSave BLOCKED: loadedProjectId', loadedProjectIdRef.current, '!== currentProjectId', currentProjectId, '— project switch in progress, skipping save');
+      // Case 1: loadedProjectIdRef is null — switch is in progress, no project is fully loaded yet.
+      if (loadedProjectIdRef.current === null) {
+        console.warn('[EO-163b] AutoSave BLOCKED — loadedProjectIdRef is null (project switch in progress), skipping save');
+        return;
+      }
+      // Case 2: loadedProjectIdRef mismatch — stale projectData from previous project.
+      if (loadedProjectIdRef.current !== currentProjectId) {
+        console.warn('[EO-163b] AutoSave BLOCKED — project ID mismatch:', loadedProjectIdRef.current, '!==', currentProjectId, '— skipping save');
         return;
       }
 
