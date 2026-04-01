@@ -483,6 +483,90 @@ function _migrateReferencesToPrefixFormat(data: any): boolean {
   return changed;
 }
 
+// ★ v1.12.22: Migrate stale [ER-N] markers to per-section prefixes [OU-N]/[OC-N]/[IM-N]/[KE-N]
+// Runs once per project load when old ER-prefixed refs exist for outputs/outcomes/impacts/kers.
+function _migrateERtoSplitPrefixes(data: any): boolean {
+  if (!data?.references?.length) return false;
+
+  // Map sectionKey to new prefix for ER sub-sections
+  const ER_SPLIT_MAP: Record<string, string> = {
+    outputs: 'OU',
+    outcomes: 'OC',
+    impacts: 'IM',
+    kers: 'KE',
+  };
+
+  // Find refs that still have chapterPrefix='ER' but belong to a split section
+  const refsToMigrate = (data.references as any[]).filter((ref: any) => {
+    if (!ref.sectionKey || !ER_SPLIT_MAP[ref.sectionKey]) return false;
+    if (!ref.chapterPrefix || ref.chapterPrefix !== 'ER') return false;
+    // Already migrated if inlineMarker starts with the correct prefix
+    const correctPrefix = ER_SPLIT_MAP[ref.sectionKey];
+    if (ref.inlineMarker && ref.inlineMarker.startsWith('[' + correctPrefix + '-')) return false;
+    return true;
+  });
+
+  if (refsToMigrate.length === 0) return false;
+
+  console.log('[ER-SPLIT-MIGRATION] Found ' + refsToMigrate.length + ' refs with stale ER prefix — migrating to OU/OC/IM/KE');
+
+  // Group by sectionKey to assign sequential numbers per new prefix
+  const bySectionKey: Record<string, any[]> = {};
+  for (const ref of refsToMigrate) {
+    if (!bySectionKey[ref.sectionKey]) bySectionKey[ref.sectionKey] = [];
+    bySectionKey[ref.sectionKey].push(ref);
+  }
+
+  // Build old→new marker map for text replacement
+  const markerMap: Array<{ old: string; new: string }> = [];
+
+  for (const [sk, refs] of Object.entries(bySectionKey)) {
+    const newPrefix = ER_SPLIT_MAP[sk];
+    // Sort by current marker number to preserve order
+    refs.sort((a: any, b: any) => {
+      const aNum = parseInt(String(a.inlineMarker || '').replace(/\D/g, ''), 10) || 0;
+      const bNum = parseInt(String(b.inlineMarker || '').replace(/\D/g, ''), 10) || 0;
+      return aNum - bNum;
+    });
+    refs.forEach((ref: any, idx: number) => {
+      const oldMarker = ref.inlineMarker;
+      const newMarker = '[' + newPrefix + '-' + (idx + 1) + ']';
+      if (oldMarker && oldMarker !== newMarker) {
+        markerMap.push({ old: oldMarker, new: newMarker });
+      }
+      ref.inlineMarker = newMarker;
+      ref.chapterPrefix = newPrefix;
+    });
+  }
+
+  if (markerMap.length === 0) return false;
+
+  // Replace markers in ALL text fields that could contain ER citations
+  const textFields = ['outputs', 'outcomes', 'impacts', 'kers'];
+  for (const field of textFields) {
+    if ((data as any)[field]) {
+      var fieldJson = JSON.stringify((data as any)[field]);
+      var changed = false;
+      // Sort by old marker length descending to prevent [ER-1] matching inside [ER-10]
+      var sorted = [...markerMap].sort((a, b) => b.old.length - a.old.length);
+      for (var entry of sorted) {
+        if (fieldJson.includes(entry.old)) {
+          fieldJson = fieldJson.split(entry.old).join(entry.new);
+          changed = true;
+        }
+      }
+      if (changed) {
+        (data as any)[field] = JSON.parse(fieldJson);
+      }
+    }
+  }
+
+  console.log('[ER-SPLIT-MIGRATION] Migrated ' + markerMap.length + ' markers: ' +
+    markerMap.map(function(m) { return m.old + '→' + m.new; }).join(', '));
+
+  return true;
+}
+
 interface UseGenerationProps {
   projectData: any;
   setProjectData: (fn: any) => void;
@@ -3033,6 +3117,17 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
         }
       }
 
+      // ★ v1.12.22: Migrate stale [ER-N] → [OU-N]/[OC-N]/[IM-N]/[KE-N]
+      if (Array.isArray(projectData.references) && projectData.references.length > 0) {
+        const _erMigrated = _migrateERtoSplitPrefixes(projectData);
+        if (_erMigrated) {
+          setProjectData((prev: any) => {
+            _migrateERtoSplitPrefixes(prev);
+            return { ...prev };
+          });
+        }
+      }
+
       isGeneratingRef.current = true;
       sessionCallCountRef.current++;
 
@@ -5101,6 +5196,17 @@ function getExpectedItemCount(sectionKey: string, projectData: any): number {
         _repairState.hasRun = false;
         _repairState.attemptedUrls.clear();
         console.log('[EO-172] Repair state reset for new composite run:', _repairState.runId);
+
+        // ★ v1.12.22: Migrate stale [ER-N] → [OU-N]/[OC-N]/[IM-N]/[KE-N] before composite run
+        if (Array.isArray(projectData.references) && projectData.references.length > 0) {
+          const _erMigrated = _migrateERtoSplitPrefixes(projectData);
+          if (_erMigrated) {
+            setProjectData((prev: any) => {
+              _migrateERtoSplitPrefixes(prev);
+              return { ...prev };
+            });
+          }
+        }
 
         // ★ EO-163b: Capture project ID at composite start — guard all saves against mid-run switch
         const _compositeStartProjectId = currentProjectId;
