@@ -111,17 +111,20 @@ export const dedupeReferences = (refs: Reference[]): Reference[] => {
   for (const ref of refs) {
     // ★ FIX v7.27: Dedup by CONTENT, not by unique id
     // Priority: real references (with title/url/doi) beat placeholders
+    // ★ v1.12.22: Content keys are SCOPED to sectionKey so the same DOI/URL cited in
+    // outputs [OU-1] and outcomes [OC-1] are NOT treated as duplicates.
+    const _sk = ref.sectionKey || 'unknown';
     const contentKeys: string[] = [];
-    if (ref.doi && ref.doi.trim()) contentKeys.push('doi:' + ref.doi.trim().toLowerCase());
-    if (ref.url && ref.url.trim().length > 10) contentKeys.push('url:' + ref.url.trim().toLowerCase());
+    if (ref.doi && ref.doi.trim()) contentKeys.push(_sk + '::doi:' + ref.doi.trim().toLowerCase());
+    if (ref.url && ref.url.trim().length > 10) contentKeys.push(_sk + '::url:' + ref.url.trim().toLowerCase());
     if (ref.title && ref.title.trim() && ref.year && !ref.title.startsWith('Reference cited as') && !ref.title.startsWith('Citation [')) {
-      contentKeys.push('ty:' + ref.title.trim().toLowerCase() + '|' + String(ref.year).trim());
+      contentKeys.push(_sk + '::ty:' + ref.title.trim().toLowerCase() + '|' + String(ref.year).trim());
     }
     // Dedup by inlineMarker within same section
     if (ref.inlineMarker && ref.sectionKey) contentKeys.push('mk:' + ref.sectionKey + '|' + ref.inlineMarker);
-    // Dedup placeholder references by marker globally (placeholder with [1] = placeholder with [1] regardless of section)
+    // Dedup placeholder references by marker+section (NOT globally — [OU-1] ≠ [OC-1])
     const isPlaceholder = ref.title && (ref.title.startsWith('Reference cited as') || ref.title.startsWith('Citation ['));
-    if (isPlaceholder && ref.inlineMarker) contentKeys.push('placeholder:' + ref.inlineMarker);
+    if (isPlaceholder && ref.inlineMarker) contentKeys.push('placeholder:' + _sk + '|' + ref.inlineMarker);
 
     let isDup = false;
     for (const ck of contentKeys) {

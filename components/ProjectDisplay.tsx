@@ -223,10 +223,14 @@ const findReferenceByInlineMarker = (
 
     // EO-141: Match by full inlineMarker string first (handles [PA-1], [SO-2] etc)
     // ★ EO-163 BUG1: Normalize brackets on both sides — AI sometimes stores "SO-3" vs "[SO-3]"
+    // ★ v1.12.22: Prefer sectionKey-exact match to avoid [OU-2] resolving to an OC/IM ref
+    //   that happens to have the same marker string after dedup cross-contamination.
     const normalizedMarkerStr = stripBrackets(markerStr);
-    const byMarkerStr = deduped.find((ref) =>
-      stripBrackets(ref.inlineMarker) === normalizedMarkerStr
-    );
+    const byMarkerStr =
+      (sectionKey
+        ? deduped.find((ref) => stripBrackets(ref.inlineMarker) === normalizedMarkerStr && ref.sectionKey === sectionKey)
+        : undefined)
+      || deduped.find((ref) => stripBrackets(ref.inlineMarker) === normalizedMarkerStr);
     if (byMarkerStr) return byMarkerStr;
 
     // ★ EO-159 BUG 25: Handle APA format markers in legacy data e.g. "(Smith, 2024)"
@@ -2196,6 +2200,81 @@ const ProjectDisplay = (props) => {
             setShowVizPrompt(true);
         }
     }, [isLoading]);
+
+    // ★ v1.12.22: Migrate stale [ER-N] markers → [OU-N]/[OC-N]/[IM-N]/[KE-N] on project load.
+    // Runs once per project (dep on id). Fixes "Reference not found" for existing projects
+    // that were saved before v1.12.21 split the ER prefix into per-section prefixes.
+    useEffect(function () {
+      var pd = props.projectData;
+      if (!pd?.references?.length) return;
+
+      var PREFIX_MAP: Record<string, string> = { outputs: 'OU', outcomes: 'OC', impacts: 'IM', kers: 'KE' };
+
+      var staleRefs = (pd.references as any[]).filter(function(r: any) {
+        return r.chapterPrefix === 'ER' && PREFIX_MAP[r.sectionKey];
+      });
+      if (staleRefs.length === 0) return;
+
+      console.log('[ER-SPLIT-LOAD] Migrating ' + staleRefs.length + ' stale ER refs on project load');
+
+      // Clone refs array so we don't mutate the original
+      var newRefs: any[] = pd.references.map(function(r: any) { return { ...r }; });
+
+      // Group cloned stale refs by sectionKey
+      var groups: Record<string, any[]> = {};
+      for (var nr of newRefs) {
+        if (nr.chapterPrefix === 'ER' && PREFIX_MAP[nr.sectionKey]) {
+          if (!groups[nr.sectionKey]) groups[nr.sectionKey] = [];
+          groups[nr.sectionKey].push(nr);
+        }
+      }
+
+      var markerMap: Record<string, string> = {};
+
+      for (var sk in groups) {
+        var grp = groups[sk];
+        var newPfx = PREFIX_MAP[sk];
+        grp.sort(function(a: any, b: any) {
+          var na = parseInt(String(a.inlineMarker || '').replace(/\D/g, ''), 10) || 0;
+          var nb = parseInt(String(b.inlineMarker || '').replace(/\D/g, ''), 10) || 0;
+          return na - nb;
+        });
+        grp.forEach(function(ref: any, i: number) {
+          var oldM = ref.inlineMarker || '';
+          var newM = '[' + newPfx + '-' + (i + 1) + ']';
+          if (oldM && oldM !== newM) markerMap[oldM] = newM;
+          ref.inlineMarker = newM;
+          ref.chapterPrefix = newPfx;
+        });
+      }
+
+      // Persist updated refs
+      props.onUpdateData(['references'], newRefs);
+
+      if (Object.keys(markerMap).length === 0) return;
+
+      // Replace markers in text fields — sort old markers by length desc to prevent partial matches
+      var sortedOld = Object.keys(markerMap).sort(function(a, b) { return b.length - a.length; });
+      var textFields = ['outputs', 'outcomes', 'impacts', 'kers'];
+      for (var tf of textFields) {
+        var raw = (pd as any)[tf];
+        if (!raw) continue;
+        var fieldJson = JSON.stringify(raw);
+        var changed = false;
+        for (var om of sortedOld) {
+          if (fieldJson.includes(om)) {
+            fieldJson = fieldJson.split(om).join(markerMap[om]);
+            changed = true;
+          }
+        }
+        if (changed) {
+          props.onUpdateData([tf], JSON.parse(fieldJson));
+        }
+      }
+
+      console.log('[ER-SPLIT-LOAD] Marker replacements applied:', markerMap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [props.projectData?.id]);
 
     if (!activeStep) return <div className="p-8 text-center text-red-500">Error: Invalid Step Selected</div>;
 
