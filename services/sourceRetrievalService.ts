@@ -1,6 +1,13 @@
 // services/sourceRetrievalService.ts
 // ═══════════════════════════════════════════════════════════════
 // EO-084: Approved source pool — retrieval-only citation pipeline
+// v1.2 — 2026-04-01 — EO-174b: Short keyword queries (≤100 chars) for activities, risks,
+//         projectManagement. These three sections previously fell through to the default
+//         case which appended mainAim (up to 100 chars) after the full project title,
+//         producing overlong queries (180-250+ chars). CrossRef and OpenAlex return better
+//         results with short, topic-focused keyword strings. New early-return path extracts
+//         4 words from project title, 5 words from mainAim, then appends section-specific
+//         academic terms (methodology/risk management/project coordination) — total ≤ 100 chars.
 // v1.1 — 2026-03-26 — EO-159 BUG11: normalizeUrlForMatch in matchReferenceToSource.
 //         BUG31: explicit buildSearchQuery cases for objectives/kers/results.
 // v1.0 — 2026-03-13
@@ -361,6 +368,31 @@ export async function searchAuthoritativeSources(
  * Extracts key topic information to create a focused academic search query.
  */
 export function buildSearchQuery(sectionKey: string, projectData: any): string {
+  // ★ EO-174b: Short keyword-focused queries for activities/risks/projectManagement.
+  // These sections need concise topic+domain queries — NOT the full project description.
+  // CrossRef/OpenAlex perform best with short, keyword-focused strings (≤100 chars).
+  if (sectionKey === 'activities' || sectionKey === 'risks' ||
+      sectionKey === 'projectManagement' || sectionKey === 'expectedResults') {
+    const _pTitle = (projectData?.projectIdea?.projectTitle || '').trim();
+    const _pAim   = (projectData?.projectIdea?.mainAim || '').trim();
+    // Extract first N words to get topic keywords without full descriptive sentences
+    const _titleKw = _pTitle.split(/\s+/).slice(0, 4).join(' ');
+    const _aimKw   = _pAim.split(/\s+/).slice(0, 5).join(' ');
+    const _sectionTerms =
+      sectionKey === 'activities'         ? 'work package methodology implementation EU project' :
+      sectionKey === 'risks'              ? 'risk management mitigation EU research project' :
+      sectionKey === 'expectedResults'    ? 'expected results outputs outcomes impacts EU research' :
+      /* projectManagement */               'project management coordination Horizon Europe';
+    const _shortQuery = [_titleKw, _aimKw, _sectionTerms]
+      .filter(Boolean).join(' ').substring(0, 100).trim();
+    if (_shortQuery.length >= 5) {
+      console.log('[EO-174b] buildSearchQuery (' + sectionKey + '): short query → "' + _shortQuery + '"');
+      return _shortQuery;
+    }
+    console.log('[EO-084] buildSearchQuery: insufficient data for "' + sectionKey + '"');
+    return '';
+  }
+
   const parts: string[] = [];
 
   // Always include project title if available

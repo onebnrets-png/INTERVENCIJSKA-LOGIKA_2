@@ -1,11 +1,5 @@
 // components/ReferencesBlock.tsx
 // ═══════════════════════════════════════════════════════════════
-// v1.18 — 2026-04-01 — EO-173 addendum: Show "No URL" grey badge when ref.url is empty and
-//         verificationStatus indicates a cleaned invalid URL (Scholar query / Vertex redirect).
-//         Previously refs with url='' showed nothing; now a grey "No URL" badge is shown so
-//         users know the source exists but the URL needs to be found manually.
-// v1.17 — 2026-03-31 — EO-168c PROBLEM 3: Sort sectionRefs by prefix group (PA→PI→GO→SO→AC→PM→PT→RS→RI→ER)
-//         then by number within group. Previously sorted by number only → mixed order (PM-1, AC-1, PM-2).
 // v1.16 — 2026-03-30 — EO-163 BUG1: Add stripBrackets helper — normalize inlineMarker
 //         bracket presence before comparison to fix "Reference not found" for [SO-3] etc.
 // v1.15 — 2026-03-26 — EO-159 BUG9: normalizeMarker APA format passthrough.
@@ -170,28 +164,14 @@ const ReferencesBlock: React.FC<ReferencesBlockProps> = ({
 
     const deduped = dedupeReferences(filtered);
 
-    // EO-168c PROBLEM 3: Sort by (prefixGroup, markerNumber) so refs group cleanly:
-    // PA-1, PA-2, PI-1, PI-2, GO-1, SO-1, AC-1, PM-1, PT-1, RS-1, RI-1, ER-1 …
-    // Refs with no recognisable prefix fall to the end, sorted by title.
-    const _PREFIX_ORDER: Record<string, number> = {
-      PA: 0, PI: 1, GO: 2, SO: 3, AC: 4, PM: 5, PT: 6, RS: 7, RI: 8, ER: 9,
-    };
-    const _getPrefixAndNum = (marker: string | undefined): { prefix: string; num: number } => {
-      if (!marker) return { prefix: '', num: Infinity };
-      const m = marker.replace(/^\[/, '').replace(/\]$/, '').match(/^([A-Z]{2,3})-(\d+)$/);
-      if (m) return { prefix: m[1], num: parseInt(m[2], 10) };
-      // bare number [N]
-      const n = marker.replace(/^\[/, '').replace(/\]$/, '').match(/^(\d+)$/);
-      if (n) return { prefix: '', num: parseInt(n[1], 10) };
-      return { prefix: '', num: Infinity };
-    };
     return deduped.sort((a, b) => {
-      const aP = _getPrefixAndNum(a.inlineMarker);
-      const bP = _getPrefixAndNum(b.inlineMarker);
-      const aOrder = aP.prefix in _PREFIX_ORDER ? _PREFIX_ORDER[aP.prefix] : 99;
-      const bOrder = bP.prefix in _PREFIX_ORDER ? _PREFIX_ORDER[bP.prefix] : 99;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      if (aP.num !== bP.num) return aP.num - bP.num;
+      const aMarker = normalizeMarker(a.inlineMarker);
+      const bMarker = normalizeMarker(b.inlineMarker);
+
+      if (aMarker !== null && bMarker !== null) return aMarker - bMarker;
+      if (aMarker !== null) return -1;
+      if (bMarker !== null) return 1;
+
       return String(a.title || '').localeCompare(String(b.title || ''));
     });
   }, [references, matchKeys]);
@@ -385,26 +365,6 @@ const ReferencesBlock: React.FC<ReferencesBlockProps> = ({
                           {ref.title ? `. ${ref.title}` : ''}
                           {ref.source ? `. ${ref.source}` : ''}
                         </p>
-                        {/* EO-173: Show "No URL" badge when URL was cleaned (Scholar query / Vertex redirect) */}
-                        {!ref.url && (
-                          ref.verificationStatus === 'invalid_url_cleaned' ||
-                          ref.verificationStatus === 'search_query_not_source' ||
-                          ref.verificationStatus === 'vertex_redirect_stripped' ||
-                          ref.verificationStatus === 'not_found' ||
-                          ref.verificationStatus === 'scholar_search_failed'
-                        ) && (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span
-                              className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 flex-shrink-0"
-                              title={language === 'si' ? 'URL ni na voljo — kliknite "Dodaj / osveži reference" za iskanje' : 'No URL available — click "Add / refresh references" to search'}
-                            >
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                              </svg>
-                              {language === 'si' ? 'Ni URL-ja' : 'No URL'}
-                            </span>
-                          </div>
-                        )}
                         {ref.url ? (
                           <div className="flex flex-col gap-0.5 mt-0.5">
                             <div className="flex items-center gap-1.5">

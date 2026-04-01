@@ -1,5 +1,41 @@
 // ═══════════════════════════════════════════════════════════════
 // services/geminiService.ts
+// v7.41 — 2026-04-01 — EO-175R PATCH 2 CHANGE A: generateActivitiesPerWP scaffold prompt and
+//         per-WP wpPrompt both replaced INLINE_CITATION_FORMAT_ENFORCEMENT (prefix 'N', no MANDATORY
+//         SOURCE RULE) with _buildCitationEnforcement('AC') so that activities prompts receive the
+//         full MANDATORY SOURCE RULE block introduced in EO-175R CHANGE 1.
+// v7.40 — 2026-04-01 — EO-175R: Enforce "cite ONLY from approved sources" at prompt and pipeline level.
+//         CHANGE 1: _buildCitationEnforcement() appends MANDATORY SOURCE RULE block — when an
+//           APPROVED SOURCES block is present, Gemini is explicitly forbidden from inventing URLs.
+//         CHANGE 2: getPromptAndSchemaForSection() moves approved sources injection to BEFORE the
+//           task instruction (after context) with strict bordered header/footer and source-only rule.
+//           Old position (after _repairInstructions at bottom) removed.
+//         CHANGE 3: generateActivitiesPerWP() strengthens the approved sources block with the same
+//           bordered header/footer used by getPromptAndSchemaForSection.
+// v7.39 — 2026-04-01 — EO-174b: Add approvedSourcesBlock and referencesEnabledParam optional
+//         parameters to generateActivitiesPerWP. approvedSourcesBlock is injected into each
+//         per-WP prompt after the context block. referencesEnabledParam (default: false)
+//         controls whether Gemini returns a _references array for the per-WP generateContent
+//         call. Scaffold generation always keeps referencesEnabled: false (scaffold has no refs).
+// v7.38 — 2026-04-01 — EO-169: Add risks + projectManagement to ACADEMIC_RIGOR_SECTIONS.
+//         Both sections now get _buildCitationEnforcement('RS') / _buildCitationEnforcement('PM')
+//         injected into their prompts when referencesEnabled=true.
+//         EO-130 refs-OFF strip logic updated to also strip per-section enforcement blocks by
+//         detecting the '═══ INLINE CITATION FORMAT ENFORCEMENT' sentinel header.
+// v7.37 — 2026-03-31 — EO-MASTER: Per-WP sectionKey (activities_wp, activities_scaffold),
+//         partnerAllocations_wp expectedItemCount, _maxOutputTokens override (E5).
+// v7.36 — 2026-03-31 — EO-167d: Fix getExpectedItemCountFromProjectData to return real counts.
+//         problemAnalysis = 1 + causes.length + consequences.length (≈11).
+//         activities = total tasks across all WPs (not WP count).
+//         projectIdea = 10, projectManagement = 5, stateOfTheArt = 5, proposedSolution = 5.
+//         default changed from 1 to 3 (safe fallback for unrecognised sections).
+// v7.35 — 2026-03-31 — EO-167c: schema: → jsonSchema: confirmed already done by EO-162b (0 matches).
+//         No code changes needed in this file for EO-167c (token fixes are in aiProvider.ts).
+// v7.34 — 2026-03-31 — EO-167 Part B: Fix Activities per-WP token overflow.
+//         previousWPsContext trimmed to compact summaries (id+title+taskIds only — no descriptions).
+//         Per-WP generateContent now passes expectedItemCount:4 → 17408 tokens instead of 5120.
+//         [EO-167] progress logs added at scaffold + each WP call.
+// v7.33 — 2026-03-27 — (skipped — reserved for intermediate build)
 // v7.32 — 2026-03-27 — EO-162b: Fixed schema: → jsonSchema: in all generateContent calls.
 //         getPromptAndSchemaForSection now returns jsonSchema: (not schema:).
 //         Destructure updated. All 4 call sites fixed (lines ~1355, ~1461, ~1585, ~2128).
@@ -192,6 +228,14 @@ REFERENCE QUANTITY LIMITS (EO-117):
 
 Quality over quantity. Only cite sources that DIRECTLY support a specific claim.
 Do NOT add references for general knowledge or obvious facts.
+
+MANDATORY SOURCE RULE (when APPROVED SOURCES block is present in this prompt):
+If an APPROVED SOURCES block is provided below, you MUST cite ONLY from those sources.
+Do NOT invent, guess, or hallucinate any URLs or DOIs.
+Every URL you write in _references MUST come verbatim from the APPROVED SOURCES list.
+If you need to cite a fact but no approved source covers it, write the claim WITHOUT a citation marker — do NOT fabricate a reference.
+If the APPROVED SOURCES block contains a DOI, construct the URL as https://doi.org/<DOI>. Do NOT make up alternative URLs.
+FORBIDDEN: Any URL that you did not copy verbatim from the approved sources list or construct directly from a provided DOI.
 ═══════════════════════════════════════════════════════════════════
 `;
 }
@@ -349,6 +393,9 @@ const ACADEMIC_RIGOR_SECTIONS = new Set([
   'mainAim', 'stateOfTheArt', 'proposedSolution', 'policies',
   'generalObjectives', 'specificObjectives',
   'outputs', 'outcomes', 'impacts', 'kers',
+  // EO-169: risks + projectManagement now get full inline citation enforcement
+  // ([RS-N] and [PM-N] markers respectively) when references are enabled.
+  'risks', 'projectManagement',
 ]);
 
 // ═══════════════════════════════════════════════════════════════
@@ -1327,6 +1374,12 @@ const getPromptAndSchemaForSection = (
     consortiumRules ? `\n${consortiumRules}` : '',
     resourceRules ? `\n${resourceRules}` : '',
     `\n${context}`,
+    // ★ EO-175R: Approved sources injected HERE (before task instruction) so Gemini sees
+    // the real DOI/URL pool BEFORE it reads the generation task. Previous position (after
+    // _repairInstructions at the bottom) meant Gemini had already planned its citations.
+    approvedSourcesBlock
+      ? `\n═══ APPROVED SOURCES — CITE ONLY FROM THIS LIST ═══\n${approvedSourcesBlock}\n═══ END APPROVED SOURCES ═══\nYou MUST cite ONLY from the sources listed above. Do NOT invent URLs or DOIs. If a claim has no matching approved source, write it without a citation marker.\n${getApprovedSourcePoolRules()}`
+      : '',
     taskInstruction ? `\n${taskInstruction}` : '',
     modeInstruction ? `\n${modeInstruction}` : '',
     textSchema,
@@ -1334,8 +1387,7 @@ const getPromptAndSchemaForSection = (
     temporalRuleBlock ? `\n${temporalRuleBlock}` : '',
     focusInstruction ? `\n★★★ REMINDER: ${focusInstruction} ★★★` : '',
     projectData._repairInstructions ? `\n★★★ ${projectData._repairInstructions} ★★★` : '',
-    approvedSourcesBlock ? `\n${approvedSourcesBlock}` : '',
-    approvedSourcesBlock ? `\n${getApprovedSourcePoolRules()}` : '',
+    // ★ EO-175R: approvedSourcesBlock moved to BEFORE taskInstruction (see above) — removed from here.
     ACADEMIC_RIGOR_SECTIONS.has(sectionKey)
       ? `\nFINAL CITATION FORMAT REMINDER:\nUse short inline attribution + marker: (Author/Institution, Year) [${_gsGetPrefix(sectionKey)}-N]. Bare [N] without prefix is invalid. Start at [${_gsGetPrefix(sectionKey)}-1].\n`
       : '',
@@ -1365,9 +1417,31 @@ const getPromptAndSchemaForSection = (
 // PUBLIC API: SECTION GENERATION
 // ═══════════════════════════════════════════════════════════════
 
-// ★ EO-161: Estimate expected item count for dynamic token calculation
+// ★ EO-161/EO-167d: Estimate expected item count for dynamic token calculation.
+// Returns REAL item counts so calculateDynamicTokenLimit can size output correctly.
 function getExpectedItemCountFromProjectData(sectionKey: string, projectData: any): number {
   switch (sectionKey) {
+    // ── Object-structure sections — logical sub-item counts ──
+    case 'problemAnalysis': {
+      // coreProblem (1) + causes + consequences
+      const pa = projectData?.problemAnalysis;
+      const causesLen = pa?.causes?.length || 4;
+      const consequencesLen = pa?.consequences?.length || 4;
+      return 1 + causesLen + consequencesLen;  // ≈ 11 with defaults
+    }
+    case 'projectIdea':
+      return 10;  // mainAim + stateOfTheArt + proposedSolution + policies + logical sub-structure
+    case 'projectManagement':
+      return 5;   // operational description sub-sections
+    case 'stateOfTheArt':
+      return 5;   // research overview paragraphs / thematic clusters
+    case 'proposedSolution':
+      return 5;   // phased solution sections
+    case 'mainAim':
+    case 'coreProblem':
+      return 1;   // single output object
+
+    // ── Array sections — actual array length ──
     case 'generalObjectives':
       return Math.max(3, projectData?.generalObjectives?.length || 3);
     case 'specificObjectives':
@@ -1388,12 +1462,23 @@ function getExpectedItemCountFromProjectData(sectionKey: string, projectData: an
       return Math.max(3, projectData?.problemAnalysis?.consequences?.length || 3);
     case 'policies':
       return Math.max(3, projectData?.projectIdea?.policies?.length || 3);
-    case 'activities':
-      return Math.max(3, projectData?.activities?.length || 3);
+    case 'readinessLevels':
+      return 4;   // always TRL/SRL/ORL/LRL
+
+    // ── Composite / chunked sections ──
+    case 'activities': {
+      // Count total tasks across all WPs, not just WP count
+      const wps: any[] = projectData?.activities || [];
+      const totalTasks = wps.reduce((sum: number, wp: any) => {
+        return sum + (wp?.tasks?.length || wp?.activities?.length || 3);
+      }, 0);
+      return Math.max(3, totalTasks);  // ≈ 18 for a typical 6-WP project with 3 tasks each
+    }
     case 'partners':
       return Math.max(3, projectData?.partners?.length || 3);
+
     default:
-      return 1;  // Single text sections
+      return 3;  // Safe fallback for unrecognised sections (was 1 — too low)
   }
 }
 
@@ -1437,9 +1522,21 @@ export const generateSectionContent = async (
     // EO-130: When references are OFF, replace the INLINE_CITATION_FORMAT_ENFORCEMENT block
     // with CITATION_WITHOUT_REFERENCES (inline Author, Year only — no [N] markers, no _references)
     if (!_refsOn) {
-      fullPrompt = fullPrompt
-        .split(INLINE_CITATION_FORMAT_ENFORCEMENT).join(getCitationWithoutReferences());
-      // Also strip getReferencesRequirement block and FINAL CITATION FORMAT REMINDER
+      // EO-169: strip both the static 'N'-prefix version AND any per-section prefix version
+      // (e.g. _buildCitationEnforcement('RS'), _buildCitationEnforcement('PM')) by targeting
+      // the shared sentinel header that starts every enforcement block.
+      const _citationSentinel = '═══ INLINE CITATION FORMAT ENFORCEMENT (MANDATORY) ═══';
+      if (fullPrompt.includes(_citationSentinel)) {
+        // Replace the entire enforcement block (from sentinel to closing ═══ line) with CWR
+        fullPrompt = fullPrompt.replace(
+          /═══ INLINE CITATION FORMAT ENFORCEMENT \(MANDATORY\) ═══[\s\S]*?═══+\s*\n/,
+          getCitationWithoutReferences()
+        );
+      } else {
+        // Fallback: try exact match on static constant (original behaviour)
+        fullPrompt = fullPrompt.split(INLINE_CITATION_FORMAT_ENFORCEMENT).join(getCitationWithoutReferences());
+      }
+      // Also strip FINAL CITATION FORMAT REMINDER line
       fullPrompt = fullPrompt.replace(/\nFINAL CITATION FORMAT REMINDER:[^\n]*\n/g, '');
       console.log('[EO-130] generateSectionContent: references OFF for "' + sectionKey + '" — using CITATION_WITHOUT_REFERENCES');
     }
@@ -1450,6 +1547,13 @@ export const generateSectionContent = async (
     }
 
     schemaForRequest = _sectionJsonSchema || undefined;
+  }
+
+  // ★ EO-MASTER E5: Honor _maxOutputTokens override from callers (e.g. enrichReferencesWithAI)
+  if (projectData._maxOutputTokens && typeof projectData._maxOutputTokens === 'number') {
+    if (!(window as any).__lastOutputTokens) (window as any).__lastOutputTokens = {};
+    (window as any).__lastOutputTokens[sectionKey] = projectData._maxOutputTokens;
+    console.log('[EO-MASTER E5] Token override: ' + projectData._maxOutputTokens + ' for "' + sectionKey + '"');
   }
 
   if (signal?.aborted) throw new DOMException('Generation cancelled', 'AbortError');
@@ -1757,7 +1861,9 @@ export const generateActivitiesPerWP = async (
   onProgress?: ((wpIndex: number, wpTotal: number, wpTitle: string) => void) | ((msg: string) => void),
   existingActivities?: any[],
   onlyIndices?: number[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  approvedSourcesBlock?: string,   // ★ EO-174b: CrossRef/OpenAlex approved sources for citation
+  referencesEnabledParam?: boolean // ★ EO-174b: when true, Gemini returns _references for each WP
 ): Promise<any[]> => {
   if (signal?.aborted) throw new DOMException('Generation cancelled', 'AbortError');
 
@@ -1795,7 +1901,7 @@ export const generateActivitiesPerWP = async (
     `\nGLOBAL RULES:\n${globalRules}`,
     sectionRules ? `\nDETAILED CHAPTER RULES:\n${sectionRules}` : '',
     academicRules ? `\n${academicRules}` : '',
-    `\n${INLINE_CITATION_FORMAT_ENFORCEMENT}`,
+    `\n${_buildCitationEnforcement('AC')}`,
     humanRules ? `\n${humanRules}` : '',
     consortiumRules ? `\n${consortiumRules}` : '',
     resourceRules ? `\n${resourceRules}` : '',
@@ -1822,8 +1928,10 @@ WP/TASK ID PREFIX RULES: ${language === 'si' ? 'Use DS prefix for WP IDs (DS1, D
   const scaffoldResult = await generateContent({
     prompt: scaffoldPrompt,
     jsonMode: true,
-    sectionKey: 'activities',
+    sectionKey: 'activities_scaffold',  // ★ EO-MASTER E2: dedicated key → correct token sizing
     signal,
+    expectedItemCount: 1,
+    referencesEnabled: false,
   });
 
   let scaffold: any[];
@@ -1944,11 +2052,16 @@ WP/TASK ID PREFIX RULES: ${language === 'si' ? 'Use DS prefix for WP IDs (DS1, D
       `\nGLOBAL RULES:\n${globalRules}`,
       sectionRules ? `\nDETAILED CHAPTER RULES:\n${sectionRules}` : '',
       academicRules ? `\n${academicRules}` : '',
-      `\n${INLINE_CITATION_FORMAT_ENFORCEMENT}`,
+      `\n${_buildCitationEnforcement('AC')}`,
       humanRules ? `\n${humanRules}` : '',
       consortiumRules ? `\n${consortiumRules}` : '',
       resourceRules ? `\n${resourceRules}` : '',
       `\n${context}`,
+      // ★ EO-175R: Inject approved sources with explicit citation restriction so Gemini
+      // cites ONLY verified DOI/URL pairs and does not hallucinate alternative URLs.
+      approvedSourcesBlock
+        ? `\n═══ APPROVED SOURCES — CITE ONLY FROM THIS LIST ═══\n${approvedSourcesBlock}\n═══ END APPROVED SOURCES ═══\nYou MUST cite ONLY URLs and DOIs from the list above. Do NOT invent or guess URLs. If no approved source matches a claim, omit the citation entirely.`
+        : '',
       previousWPsContext,
       `\nSCAFFOLD:\n${JSON.stringify(scaffold, null, 2)}`,
       `\nTASK: Generate the COMPLETE work package ${wpId} ("${wpScaffold.title}").
@@ -1973,8 +2086,13 @@ REFERENCE LIMIT (EO-116): Work package descriptions are OPERATIONAL, not academi
     const wpResult = await generateContent({
       prompt: wpPrompt,
       jsonMode: true,
-      sectionKey: 'activities',
+      sectionKey: 'activities_wp',  // ★ EO-MASTER E3: dedicated key → ~14k tokens per WP
       signal,
+      expectedItemCount: 4,
+      // ★ EO-174b: honour caller's referencesEnabledParam (default: false per EO-MASTER E2).
+      // When true (composite/standalone with refs ON), Gemini returns a _references array
+      // that the caller's WP pipeline (_runFullReferencePipeline) can process.
+      referencesEnabled: referencesEnabledParam ?? false,
     });
 
     try {
@@ -2599,6 +2717,8 @@ CRITICAL:
         jsonMode: true,
         sectionKey: 'partnerAllocations_wp', // EO-117: 16384 tokens (EO-127: raised from 8192)
         signal,
+        expectedItemCount: wpTasks.length * Math.min(partnerSummary.length, 4),  // ★ EO-MASTER E4
+        referencesEnabled: false,
       });
 
       // EO-127: Log raw response for diagnostics BEFORE recovery

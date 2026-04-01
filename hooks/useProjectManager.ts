@@ -2,6 +2,21 @@
 // ═══════════════════════════════════════════════════════════════
 // Project CRUD, import/export, save, auto-save, navigation.
 // On login: shows project list instead of auto-loading last project.
+// v1.14 — 2026-03-31 — EO-164c: Auto-cleanup language-corrupted data on project load.
+//         Detects language mismatch in all array/string sections using detectTextLanguage().
+//         Clears corrupted sections to default state, saves cleaned data to Supabase,
+//         notifies user via eo-toast CustomEvent (listener in App.tsx). Runs once per
+//         project per session via cleanupPerformedRef. Safety guards: min 2 samples,
+//         min 50 chars, 'unknown' detection skipped, CLEANUP_ENABLED flag.
+// v1.13 — 2026-03-31 — EO-164b Bug 1: AutoSave language mismatch guard.
+//         ROOT CAUSE: pre-EO-164 cross-project bug saved CORA-CIM (EN) data into LOV-HELP (SI) in Supabase.
+//         loadProject returns this corrupt record; AutoSave re-saves it → perpetuates the corruption.
+//         detectProjectLanguage() cannot scan array items (generalObjectives values are objects, not strings).
+//         FIX: extract text from generalObjectives/specificObjectives titles → detectTextLanguage() →
+//         block AutoSave if detected language != language state variable.
+// v1.12 — 2026-03-30 — EO-164: No code changes needed here — cross-project contamination
+//         is fully prevented by EO-164 fix in useGeneration.ts (setProjectData guard).
+//         Existing EO-163b guards (loadedProjectIdRef) remain intact as second layer of defense.
 // v1.11 — 2026-03-30 — EO-163b: AutoSave null-guard — also block when loadedProjectIdRef is null
 //         (project switch in progress). Updated all [EO-163] log prefixes to [EO-163b].
 // v1.10 — 2026-03-30 — EO-163 BUG3: AutoSave cross-project guard — track loadedProjectIdRef
@@ -56,6 +71,7 @@ import {
   recalculateProjectSchedule,
   safeMerge,
   detectProjectLanguage,
+  detectTextLanguage,
 } from '../utils.ts';
 import html2canvas from 'html2canvas';
 
@@ -183,7 +199,10 @@ export const useProjectManager = ({
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const skipHistoryRef = useRef(false);
-  
+  // ★ EO-164c: Auto-cleanup language-corrupted data on project load
+  const CLEANUP_ENABLED = true;
+  const cleanupPerformedRef = useRef<Record<string, boolean>>({});
+
   // ─── Helpers ───────────────────────────────────────────────────
 
   const hasContent = useCallback((data: any): boolean => {
@@ -205,6 +224,174 @@ export const useProjectManager = ({
       }
     }
     return false;
+  }, []);
+
+  // ★ EO-164c: Detect and clean language-corrupted sections after load from Supabase
+  const performLanguageCleanup = useCallback((
+    data: any,
+    expectedLang: 'en' | 'si',
+    projectId: string
+  ): { data: any; sectionsCleared: string[] } => {
+    if (!data || !CLEANUP_ENABLED) return { data, sectionsCleared: [] };
+
+    const sectionsCleared: string[] = [];
+    let cleanedData = { ...data };
+    const defaults = createEmptyProjectData();
+
+    // Helper: extract titles from an array section
+    const extractTitles = (arr: any[], fieldName: string = 'title'): string[] => {
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map((item: any) => item?.[fieldName])
+        .filter((t: any): t is string => typeof t === 'string' && t.trim().length > 10)
+        .slice(0, 6);
+    };
+
+    // Helper: check if a section's language mismatches
+    const isLangMismatch = (texts: string[]): boolean => {
+      if (texts.length < 2) return false;
+      const combined = texts.join('. ');
+      const detected = detectTextLanguage(combined);
+      if (detected === 'unknown' || detected === expectedLang) return false;
+      return true;
+    };
+
+    // Helper: get detected language for logging
+    const getDetectedLang = (texts: string[]): string => {
+      if (texts.length < 2) return 'unknown';
+      return detectTextLanguage(texts.join('. '));
+    };
+
+    // ── ARRAY SECTIONS with 'title' field ──
+    const arraySectionsTitle: string[] = [
+      'generalObjectives', 'specificObjectives',
+      'outputs', 'outcomes', 'impacts', 'risks', 'kers'
+    ];
+
+    for (const sectionKey of arraySectionsTitle) {
+      const arr = cleanedData[sectionKey];
+      if (!Array.isArray(arr) || arr.length === 0) continue;
+      const titles = extractTitles(arr, 'title');
+      if (isLangMismatch(titles)) {
+        const detected = getDetectedLang(titles);
+        console.warn(
+          '[EO-164c] Auto-cleanup: section "' + sectionKey + '" cleared — ' +
+          'detected language "' + detected + '" \u2260 project language "' + expectedLang + '" ' +
+          '(' + titles.length + ' samples, projectId=' + projectId + ')'
+        );
+        cleanedData[sectionKey] = (defaults as any)[sectionKey] || [];
+        if (cleanedData[sectionKey + '_references']) {
+          cleanedData[sectionKey + '_references'] = [];
+        }
+        if (cleanedData._generationMeta?.[sectionKey]) {
+          const meta = { ...(cleanedData._generationMeta || {}) };
+          delete meta[sectionKey];
+          cleanedData._generationMeta = meta;
+        }
+        sectionsCleared.push(sectionKey);
+      }
+    }
+
+    // ── ACTIVITIES (WP titles + task titles) ──
+    if (Array.isArray(cleanedData.activities) && cleanedData.activities.length > 0) {
+      const activityTitles: string[] = [];
+      for (const wp of cleanedData.activities) {
+        if (wp?.title && typeof wp.title === 'string' && wp.title.trim().length > 10) {
+          activityTitles.push(wp.title.trim());
+        }
+        if (Array.isArray(wp?.tasks)) {
+          for (const task of wp.tasks) {
+            if (task?.title && typeof task.title === 'string' && task.title.trim().length > 10) {
+              activityTitles.push(task.title.trim());
+            }
+            if (activityTitles.length >= 6) break;
+          }
+        }
+        if (activityTitles.length >= 6) break;
+      }
+      if (isLangMismatch(activityTitles)) {
+        const detected = getDetectedLang(activityTitles);
+        console.warn(
+          '[EO-164c] Auto-cleanup: section "activities" cleared — ' +
+          'detected language "' + detected + '" \u2260 project language "' + expectedLang + '" ' +
+          '(' + activityTitles.length + ' samples, projectId=' + projectId + ')'
+        );
+        cleanedData.activities = defaults.activities;
+        if (cleanedData.activities_references) {
+          cleanedData.activities_references = [];
+        }
+        if (cleanedData._generationMeta?.activities) {
+          const meta = { ...(cleanedData._generationMeta || {}) };
+          delete meta.activities;
+          cleanedData._generationMeta = meta;
+        }
+        sectionsCleared.push('activities');
+      }
+    }
+
+    // ── STRING SECTIONS (long text fields) ──
+    const stringFields: { path: string[] }[] = [
+      { path: ['problemAnalysis', 'coreProblem', 'description'] },
+      { path: ['projectIdea', 'mainAim'] },
+      { path: ['projectIdea', 'proposedSolution'] },
+      { path: ['projectIdea', 'stateOfTheArt'] },
+      { path: ['projectManagement', 'description'] },
+    ];
+
+    for (const { path } of stringFields) {
+      let value: any = cleanedData;
+      for (const key of path) {
+        value = value?.[key];
+      }
+      if (typeof value !== 'string' || value.trim().length < 50) continue;
+
+      const detected = detectTextLanguage(value);
+      if (detected === 'unknown' || detected === expectedLang) continue;
+
+      const sectionLabel = path.join('.');
+      console.warn(
+        '[EO-164c] Auto-cleanup: field "' + sectionLabel + '" cleared — ' +
+        'detected language "' + detected + '" \u2260 project language "' + expectedLang + '" ' +
+        '(' + value.length + ' chars, projectId=' + projectId + ')'
+      );
+
+      // Navigate to parent and clear the field (working on copies)
+      const topKey = path[0];
+      if (path.length === 2) {
+        cleanedData[topKey] = { ...cleanedData[topKey], [path[1]]: '' };
+      } else if (path.length === 3) {
+        cleanedData[topKey] = {
+          ...cleanedData[topKey],
+          [path[1]]: { ...(cleanedData[topKey]?.[path[1]] || {}), [path[2]]: '' }
+        };
+      }
+
+      // Clear _references and _generationMeta for the top-level section
+      if (cleanedData[topKey + '_references']) {
+        cleanedData[topKey + '_references'] = [];
+      }
+      if (cleanedData._generationMeta?.[topKey]) {
+        const meta = { ...(cleanedData._generationMeta || {}) };
+        delete meta[topKey];
+        cleanedData._generationMeta = meta;
+      }
+      sectionsCleared.push(sectionLabel);
+    }
+
+    // ── Also clear problemAnalysis.causes/consequences if coreProblem was corrupted ──
+    if (sectionsCleared.some(s => s.startsWith('problemAnalysis'))) {
+      const causeTitles = extractTitles(cleanedData.problemAnalysis?.causes || [], 'title');
+      if (causeTitles.length >= 2 && isLangMismatch(causeTitles)) {
+        cleanedData.problemAnalysis = {
+          ...cleanedData.problemAnalysis,
+          causes: defaults.problemAnalysis.causes,
+          consequences: defaults.problemAnalysis.consequences,
+        };
+        console.warn('[EO-164c] Auto-cleanup: problemAnalysis.causes/consequences also cleared');
+      }
+    }
+
+    return { data: cleanedData, sectionsCleared };
   }, []);
 
   // ★ v1.4: Push current state to undo stack before any change
@@ -337,14 +524,67 @@ var handleRedo = useCallback(function() {
           const otherData = await storageService.loadProject(otherLang, specificId);
           const mergedOther = otherData ? migrateActivityPrefixes(safeMerge(otherData), otherLang) : null;
 
+          // ★ EO-164c: Auto-cleanup language-corrupted data before setting state
+          const effectiveProjectId = specificId || storageService.getCurrentProjectId() || 'unknown';
+          let finalData = mergedData;
+          let finalOtherData = mergedOther;
+          let totalCleaned = 0;
+
+          if (CLEANUP_ENABLED && !cleanupPerformedRef.current[effectiveProjectId]) {
+            // Clean active language data
+            const activeResult = performLanguageCleanup(mergedData, activeLang, effectiveProjectId);
+            finalData = activeResult.data;
+
+            // Clean other language data (if exists)
+            if (mergedOther) {
+              const otherResult = performLanguageCleanup(mergedOther, otherLang, effectiveProjectId);
+              finalOtherData = otherResult.data;
+              totalCleaned += otherResult.sectionsCleared.length;
+
+              // Save cleaned other-language data if sections were cleared
+              if (otherResult.sectionsCleared.length > 0) {
+                console.log('[EO-164c] Saving cleaned ' + otherLang.toUpperCase() + ' data (' + otherResult.sectionsCleared.length + ' sections cleared)');
+                await storageService.saveProject(otherResult.data, otherLang, effectiveProjectId);
+              }
+            }
+
+            totalCleaned += activeResult.sectionsCleared.length;
+            cleanupPerformedRef.current[effectiveProjectId] = true;
+
+            // Save cleaned active-language data if sections were cleared
+            if (activeResult.sectionsCleared.length > 0) {
+              console.log('[EO-164c] Saving cleaned ' + activeLang.toUpperCase() + ' data (' + activeResult.sectionsCleared.length + ' sections cleared)');
+              await storageService.saveProject(activeResult.data, activeLang, effectiveProjectId);
+            }
+
+            if (totalCleaned > 0) {
+              console.log('[EO-164c] Cleaned ' + totalCleaned + ' corrupted sections total — saved to Supabase');
+            }
+          }
+
           // ★ v1.3: Set projectVersions BEFORE projectData to prevent sync effect from overwriting
           setProjectVersions({
-            en: activeLang === 'en' ? mergedData : mergedOther,
-            si: activeLang === 'si' ? mergedData : mergedOther,
+            en: activeLang === 'en' ? finalData : finalOtherData,
+            si: activeLang === 'si' ? finalData : finalOtherData,
           });
-          setProjectData(mergedData);
+          setProjectData(finalData);
           // ★ EO-163 BUG3: Record which project was loaded so AutoSave can detect stale saves
-          loadedProjectIdRef.current = specificId || storageService.getCurrentProjectId() || null;
+          loadedProjectIdRef.current = effectiveProjectId !== 'unknown' ? effectiveProjectId : null;
+
+          // ★ EO-164c: Show notification AFTER state is set (user sees clean data)
+          if (totalCleaned > 0) {
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('eo-toast', {
+                detail: {
+                  type: 'warning',
+                  message: activeLang === 'si'
+                    ? totalCleaned + ' sekcij je vsebovalo podatke v napačnem jeziku in so bile počiščene. Prosimo, regenerirajte jih.'
+                    : totalCleaned + ' section' + (totalCleaned !== 1 ? 's' : '') + ' contained data in the wrong language and were cleared. Please regenerate them.',
+                  duration: 8000,
+                }
+              }));
+            }, 500);
+          }
         } else {
           setProjectData(createEmptyProjectData());
           setProjectVersions({ en: null, si: null });
@@ -453,6 +693,37 @@ var handleRedo = useCallback(function() {
           }
           // Note: storageService.renameProject not available — in-memory update is sufficient.
           // Supabase project name will be updated on next explicit save/rename by the user.
+        }
+      }
+
+      // ★ EO-164b Bug 1: Guard against language-mismatched data being auto-saved.
+      // ROOT CAUSE: pre-EO-164 cross-project bug saved English data into SI projects in Supabase.
+      // loadProject returns this corrupt record; AutoSave re-saves → perpetuates corruption indefinitely.
+      // detectProjectLanguage() cannot scan array content (generalObjectives items are {id, title, ...} objects).
+      // FIX: extract text from generalObjectives and specificObjectives titles, run detectTextLanguage().
+      // If detected language != language state AND there are enough samples → block the save.
+      const _langCheckTexts: string[] = [];
+      if (Array.isArray(projectData.generalObjectives)) {
+        for (const _go of projectData.generalObjectives as any[]) {
+          if (_go?.title && typeof _go.title === 'string' && _go.title.trim().length > 10) {
+            _langCheckTexts.push(_go.title.trim());
+            if (_langCheckTexts.length >= 4) break;
+          }
+        }
+      }
+      if (_langCheckTexts.length < 3 && Array.isArray(projectData.specificObjectives)) {
+        for (const _so of projectData.specificObjectives as any[]) {
+          if (_so?.title && typeof _so.title === 'string' && _so.title.trim().length > 10) {
+            _langCheckTexts.push(_so.title.trim());
+            if (_langCheckTexts.length >= 4) break;
+          }
+        }
+      }
+      if (_langCheckTexts.length >= 2) {
+        const _detectedLang = detectTextLanguage(_langCheckTexts.join('. '));
+        if (_detectedLang !== 'unknown' && _detectedLang !== language) {
+          console.warn('[EO-164b] AutoSave BLOCKED — language mismatch in objectives: detected="' + _detectedLang + '" expected="' + language + '" projectId=' + currentProjectId + ' samples=' + _langCheckTexts.length + '. Refusing to perpetuate pre-EO-164 Supabase corruption.');
+          return;
         }
       }
 

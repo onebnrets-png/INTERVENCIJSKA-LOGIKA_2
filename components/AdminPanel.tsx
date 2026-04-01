@@ -1,6 +1,9 @@
 // components/AdminPanel.tsx
 // ═══════════════════════════════════════════════════════════════
 // Unified Admin / Settings Panel
+// v5.3 — 2026-03-31 — EO-165: Add project acronym column to SuperAdmin project overview table.
+//         Extracts projectIdea.projectAcronym from project_data on load; shows as first column.
+//         Title cell subtitle remains projectId prefix. Falls back to "—" if no acronym.
 // v5.2 - Web Search simplified — checkbox only, no Serper key (EO-042 fix)
 // v5.1 - Web Search settings in AI tab (EO-042) (REPLACED by v5.2)
 // v5.0 - Changelog Admin filtering (EO-033)
@@ -171,6 +174,7 @@ const ADMIN_TEXT = {
       registered: 'Registered',
       projectTable: 'Projects Overview',
       projectTitle: 'Project Title',
+      acronym: 'Acronym',
       owner: 'Owner',
       lang: 'Language',
       created: 'Created',
@@ -354,6 +358,7 @@ const ADMIN_TEXT = {
       registered: 'Registriran',
       projectTable: 'Pregled projektov',
       projectTitle: 'Naslov projekta',
+      acronym: 'Akronim',
       owner: 'Lastnik',
       lang: 'Jezik',
       created: 'Ustvarjen',
@@ -820,9 +825,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose, language, init
         var languages = Object.keys(pData);
         // Find owner email from admin.users
         var ownerUser = admin.users.find(function(u) { return u.id === proj.owner_id; });
+        // ★ EO-165: Extract project acronym for display in overview table
+        var acronym = (data.projectIdea && data.projectIdea.projectAcronym && data.projectIdea.projectAcronym.trim())
+          ? data.projectIdea.projectAcronym.trim()
+          : '';
         return {
           id: proj.id,
           title: proj.title || '(Untitled)',
+          acronym: acronym,
           ownerId: proj.owner_id,
           ownerEmail: ownerUser ? ownerUser.email : proj.owner_id.substring(0, 8) + '...',
           language: languages.join(', ') || '\u2014',
@@ -1951,6 +1961,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose, language, init
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: typography.fontSize.sm }}>
                             <thead>
                               <tr style={{ borderBottom: '2px solid ' + colors.border.light }}>
+                                <th style={{ textAlign: 'left', padding: '10px 12px', color: colors.text.muted, fontWeight: typography.fontWeight.semibold, whiteSpace: 'nowrap' }}>{tStats.acronym || 'Acronym'}</th>
                                 <th style={{ textAlign: 'left', padding: '10px 12px', color: colors.text.muted, fontWeight: typography.fontWeight.semibold }}>{tStats.projectTitle || 'Project'}</th>
                                 <th style={{ textAlign: 'left', padding: '10px 12px', color: colors.text.muted, fontWeight: typography.fontWeight.semibold }}>{tStats.owner || 'Owner'}</th>
                                 <th style={{ textAlign: 'center', padding: '10px 12px', color: colors.text.muted, fontWeight: typography.fontWeight.semibold }}>{tStats.lang || 'Lang'}</th>
@@ -1968,6 +1979,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose, language, init
                                     <tr key={proj.id} style={{ borderBottom: '1px solid ' + colors.border.light, background: rowDefaultBg }}
                                       onMouseEnter={function(e) { e.currentTarget.style.background = rowHoverBg; }}
                                       onMouseLeave={function(e) { e.currentTarget.style.background = rowDefaultBg; }}>
+                                      {/* ★ EO-165: Acronym column */}
+                                      <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                                        {proj.acronym ? (
+                                          <span style={{ fontWeight: typography.fontWeight.bold, color: colors.text.heading, fontFamily: typography.fontFamily.mono, fontSize: typography.fontSize.sm }}>{proj.acronym}</span>
+                                        ) : (
+                                          <span style={{ color: colors.text.muted, fontSize: typography.fontSize.xs }}>\u2014</span>
+                                        )}
+                                      </td>
                                       <td style={{ padding: '10px 12px' }}>
                                         <div>
                                           <div style={{ color: colors.text.body, fontWeight: typography.fontWeight.medium }}>{proj.title}</div>

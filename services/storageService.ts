@@ -1,6 +1,9 @@
 // services/storageService.ts
 // ═══════════════════════════════════════════════════════════════
 // Supabase-backed storage service — replaces localStorage completely
+// ★ v5.12 — 2026-04-01 — EO-173C: Clean Scholar query URLs and Vertex AI redirect URLs on
+//         project load. References with these invalid URLs get url='' + verificationStatus=
+//         'invalid_url_cleaned' so UI shows "No URL" badge instead of broken link.
 // ★ v5.11 — 2026-03-20 — EO-136: createProject changed INSERT → UPSERT with onConflict:'project_id,language'. Prevents PGRST116 duplicate row errors.
 // ★ v5.10 — 2026-03-18 — EO-130: getReferencesEnabled + setReferencesEnabledInData helpers for per-section reference toggle
 // ★ v5.9: getUserProjectsWithLanguages() — EO-058 bilingual project list
@@ -826,6 +829,30 @@ export const storageService = {
     const goCheck = data.data?.generalObjectives;
     const goHasContent = Array.isArray(goCheck) && goCheck.length > 0 && goCheck.some((item: any) => item?.title?.trim());
     console.log(`[storageService.loadProject] lang=${language}, projectId=${targetId}, generalObjectives: ${goHasContent ? '✅ HAS (' + goCheck.length + ' items)' : '⚠️ EMPTY'}`);
+
+    // ★ EO-173C: Strip Scholar search query URLs and Vertex AI redirect URLs on project load.
+    // These were stored by EO-148 Scholar fallback (now fixed) and Gemini grounding API.
+    // Clean retroactively so badges show "No URL" (grey) instead of broken link (red).
+    if (Array.isArray(data.data.references) && data.data.references.length > 0) {
+      const _EO173C_PATTERNS = [
+        'scholar.google.com/scholar?q=',
+        'vertexaisearch.cloud.google.com',
+        'grounding-api-redirect',
+      ];
+      var _eo173cCount = 0;
+      data.data.references = data.data.references.map(function(ref: any) {
+        if (!ref.url) return ref;
+        var _isInvalid = _EO173C_PATTERNS.some(function(p: string) { return ref.url.includes(p); });
+        if (_isInvalid) {
+          _eo173cCount++;
+          return { ...ref, url: '', urlVerified: false, verificationStatus: 'invalid_url_cleaned', verificationMethod: 'eo173_cleanup', resolvedUrl: '' };
+        }
+        return ref;
+      });
+      if (_eo173cCount > 0) {
+        console.log('[EO-173C] Cleaned ' + _eo173cCount + ' invalid URLs on project load (Scholar query / Vertex redirect)');
+      }
+    }
 
     return data.data;
   },

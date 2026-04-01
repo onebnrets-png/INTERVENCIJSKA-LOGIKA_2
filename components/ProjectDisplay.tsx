@@ -1,5 +1,15 @@
 // components/ProjectDisplay.tsx
 // ═══════════════════════════════════════════════════════════════
+// v7.42 — 2026-04-01 — EO-171: Fix FieldCitationsPreview infinite re-render.
+//         Removed console.log('[EO-163b]') that fired on every render (100+/sec) with
+//         full .map() across all references — caused UI freeze and console flood.
+//         Warning log for missing markers throttled to max 1x per 10 seconds per marker.
+// v7.41 — 2026-03-31 — EO-168c PROBLEM 2: renderRisks — add effectiveRefsEnabled override.
+//         DEFAULT_REFS_ENABLED['activities'] = false causes risks citation buttons to be hidden
+//         even when pipeline refs with sectionKey='risks' exist. Override: if any ref has
+//         sectionKey='risks', force refsEnabled=true for all TextArea fields in renderRisks.
+// v7.40 — 2026-03-31 — EO-MASTER: findReferenceByInlineMarker bare [N]→[XX-N]
+//         display fallback matching for legacy/unmigrated text.
 // v7.39 — 2026-03-30 — EO-163b: Add [EO-163b] debug log in FieldCitationsPreview (available markers)
 //         and warn log when reference lookup fails. Aids in diagnosing [SO-1] "not found" issue.
 // v7.38 — 2026-03-26 — EO-159: BUG5 refs OFF/ON stale lifecycle in SectionGenerateWithToggle.
@@ -231,6 +241,31 @@ const findReferenceByInlineMarker = (
         }
     }
 
+    // ★ EO-MASTER D: Bare [N] → [XX-N] prefix matching for legacy/unmigrated text
+    const _bareNumMatch = markerStr.match(/^\[(\d+)\]$/);
+    if (_bareNumMatch) {
+      const _bareNum = _bareNumMatch[1];
+      const _dmChapterMap: Record<string, string> = {
+        problemAnalysis: 'PA', coreProblem: 'PA', causes: 'PA', consequences: 'PA',
+        projectIdea: 'PI', mainAim: 'PI', stateOfTheArt: 'PI', proposedSolution: 'PI', policies: 'PI',
+        generalObjectives: 'GO', specificObjectives: 'SO',
+        activities: 'AC', projectManagement: 'PM', partners: 'PT', risks: 'RS',
+        expectedResults: 'ER', outputs: 'ER', outcomes: 'ER', impacts: 'ER', kers: 'ER',
+      };
+      const _dmSk = sectionKey || (topLevelKey || '');
+      const _dmPrefix = _dmChapterMap[_dmSk] || '';
+      if (_dmPrefix) {
+        const _dmPrefixed = '[' + _dmPrefix + '-' + _bareNum + ']';
+        const _dmMatch = deduped.find(function(ref) {
+          return stripBrackets(ref.inlineMarker) === stripBrackets(_dmPrefixed);
+        });
+        if (_dmMatch) {
+          console.log('[EO-MASTER D] Matched bare ' + markerStr + ' to prefixed ' + _dmPrefixed);
+          return _dmMatch;
+        }
+      }
+    }
+
     // Fallback: match by number only (legacy [N] format support)
     const num = (() => {
         const pm = markerStr.match(/\[(?:[A-Z]{2,3}-)?(\d+)\]/);
@@ -436,13 +471,8 @@ const SectionGenerateWithToggle = ({ sectionKey, projectData, onUpdateData, onGe
 const FieldCitationsPreview = ({ text, references, sectionKey, language }: { text: string, references: any[], sectionKey: string, language: string }) => {
     if (!text || !text.includes('[')) return null;
 
-    // ★ EO-163b: Debug log — show all available references and their stripped markers
-    console.log('[EO-163b] FieldCitationsPreview — sectionKey:', sectionKey, '| Available references:', (Array.isArray(references) ? references : []).map(r => ({
-      inlineMarker: r.inlineMarker,
-      stripped: stripBrackets(r.inlineMarker),
-      sectionKey: r.sectionKey,
-      title: (r.title || '').substring(0, 40),
-    })));
+    // ★ EO-171: Debug log removed — was firing on every render (100+/sec), causing UI freeze.
+    // To debug reference matching, set breakpoint on the regex loop below.
 
     // EO-141: Match both [PA-1] prefixed and legacy [1] formats, plus [N, M] multi-citation
     const regex = /(?:\(([^)]*?\d{4}[^)]*)\)\s*)?\[([A-Z]{2,3}-\d+|\d+(?:,\s*\d+)*)\]/g;
@@ -465,10 +495,14 @@ const FieldCitationsPreview = ({ text, references, sectionKey, language }: { tex
                 seen.add(markerStr);
                 const refEntry = findReferenceByInlineMarker(markerStr, references, sectionKey);
                 if (!refEntry) {
-                  console.warn('[EO-163b] Reference not found for marker:', markerStr,
-                    '| normalized:', stripBrackets(markerStr),
-                    '| sectionKey:', sectionKey,
-                    '| available markers:', (Array.isArray(references) ? references : []).map(r => r.inlineMarker).join(', '));
+                  // ★ EO-171: Throttled warning — max 1 log per marker per 10 seconds.
+                  // Previous version logged on every render (100+/sec) with full .map() — froze UI.
+                  var _eo171WarnKey = '_eo171_' + sectionKey + '_' + markerStr;
+                  var _eo171LastWarn = (window as any)[_eo171WarnKey] || 0;
+                  if (Date.now() - _eo171LastWarn > 10000) {
+                    (window as any)[_eo171WarnKey] = Date.now();
+                    console.warn('[EO-163b] Reference not found for marker:', markerStr, '| sectionKey:', sectionKey);
+                  }
                 }
                 citedRefs.push({ markerStr, refEntry: refEntry || null, missing: !refEntry });
             }
@@ -1109,7 +1143,12 @@ const renderRisks = (props) => {
     // EO-153b: Read refs toggle for this chapter
     const _chapterKeyForRefs = getChapterForSection('risks');
     const refsEnabled = projectData?._settings?.referencesEnabled?.[_chapterKeyForRefs] ?? DEFAULT_REFS_ENABLED[_chapterKeyForRefs] ?? false;
-    
+    // EO-168c PROBLEM 2: DEFAULT_REFS_ENABLED['activities'] = false, but risks can have real
+    // citations from the pipeline. Override to true when existing risk refs are present so
+    // citation buttons and preview badges appear regardless of toggle state.
+    const _hasExistingRisksRefs = refs.some((r: any) => r.sectionKey === 'risks');
+    const effectiveRefsEnabled = refsEnabled || _hasExistingRisksRefs;
+
     return (
         <div id="risk-mitigation" className="mt-12 border-t-2 border-slate-200 pt-8">
             <SectionHeader title={t.subSteps.riskMitigation} onAdd={() => onAddItem(path, { id: `RISK${safeArray(risks).length + 1}`, category: 'technical', title: '', description: '', likelihood: 'low', impact: 'low', mitigation: '' })} addText={t.add} guideStep="activities" guideField="riskMitigation" language={language}>
@@ -1136,10 +1175,10 @@ const renderRisks = (props) => {
                             </select>
                         </div>
                         <div className="flex-1 min-w-[200px]">
-                             <TextArea label={t.risks.riskTitle} path={[...path, index, 'title']} value={risk.title} onUpdate={onUpdateData} onGenerate={onGenerateField} isLoading={isLoading} rows={1} placeholder={t.risks.titlePlaceholder} generateTitle={`${t.generateField} ${t.title}`} missingApiKey={missingApiKey} className="w-full group" onFieldAIGenerate={onFieldAIGenerate} language={language} references={refs} refsEnabled={refsEnabled} />
+                             <TextArea label={t.risks.riskTitle} path={[...path, index, 'title']} value={risk.title} onUpdate={onUpdateData} onGenerate={onGenerateField} isLoading={isLoading} rows={1} placeholder={t.risks.titlePlaceholder} generateTitle={`${t.generateField} ${t.title}`} missingApiKey={missingApiKey} className="w-full group" onFieldAIGenerate={onFieldAIGenerate} language={language} references={refs} refsEnabled={effectiveRefsEnabled} />
                         </div>
                     </div>
-                    <TextArea label={t.risks.riskDescription} path={[...path, index, 'description']} value={risk.description} onUpdate={onUpdateData} onGenerate={onGenerateField} isLoading={isLoading} placeholder={t.risks.descPlaceholder} generateTitle={`${t.generateField} ${t.description}`} missingApiKey={missingApiKey} onFieldAIGenerate={onFieldAIGenerate} language={language} references={refs} refsEnabled={refsEnabled} />
+                    <TextArea label={t.risks.riskDescription} path={[...path, index, 'description']} value={risk.description} onUpdate={onUpdateData} onGenerate={onGenerateField} isLoading={isLoading} placeholder={t.risks.descPlaceholder} generateTitle={`${t.generateField} ${t.description}`} missingApiKey={missingApiKey} onFieldAIGenerate={onFieldAIGenerate} language={language} references={refs} refsEnabled={effectiveRefsEnabled} />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                         <div>
                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">{t.risks.likelihood}</label>
@@ -1164,7 +1203,7 @@ const renderRisks = (props) => {
                             </div>
                         </div>
                     </div>
-                    <TextArea label={t.risks.mitigation} path={[...path, index, 'mitigation']} value={risk.mitigation} onUpdate={onUpdateData} onGenerate={onGenerateField} isLoading={isLoading} placeholder={t.risks.mitigationPlaceholder} generateTitle={`${t.generateField} ${t.risks.mitigation}`} missingApiKey={missingApiKey} onFieldAIGenerate={onFieldAIGenerate} language={language} references={refs} refsEnabled={refsEnabled} />
+                    <TextArea label={t.risks.mitigation} path={[...path, index, 'mitigation']} value={risk.mitigation} onUpdate={onUpdateData} onGenerate={onGenerateField} isLoading={isLoading} placeholder={t.risks.mitigationPlaceholder} generateTitle={`${t.generateField} ${t.risks.mitigation}`} missingApiKey={missingApiKey} onFieldAIGenerate={onFieldAIGenerate} language={language} references={refs} refsEnabled={effectiveRefsEnabled} />
                     <InlineChart text={(risk.description || '') + ' ' + (risk.mitigation || '')} fieldContext={'risk_' + index} language={language} onRateLimitError={onOpenSettings} triggerExtraction={vizTrigger} />
                 </div>
             )})}

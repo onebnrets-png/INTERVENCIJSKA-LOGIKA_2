@@ -1,9 +1,6 @@
 // App.tsx
 // ═══════════════════════════════════════════════════════════════
 // Main application shell — orchestration only.
-// v5.12 — 2026-03-31 — EO-MASTER: handleInjectReferencesToSection nested write-back fix
-//         (stateOfTheArt, causes, consequences etc. now write to correct nested path).
-//         Project switch guard added. SUB_SECTION_READ_MAP for correct read path.
 // v5.11 — 2026-03-31 — EO-167c BUG4: Fix "Add / refresh references" regression.
 //         Root cause: EO-148b block accessed `verResults` (const-declared inside try{} block)
 //         OUTSIDE the try block. At runtime: ReferenceError → caught by outer catch → user saw
@@ -552,24 +549,8 @@ const App = () => {
       console.log('[EO-147e] Pre-inject cleanup: removed ' + removedCount + ' old refs for "' + sectionKey + '" (local, no setState race)');
     }
 
-    // ★ EO-MASTER C1: Correct read path for nested sub-sections
-    const SUB_SECTION_READ_MAP: Record<string, string[]> = {
-      coreProblem:      ['problemAnalysis', 'coreProblem'],
-      causes:           ['problemAnalysis', 'causes'],
-      consequences:     ['problemAnalysis', 'consequences'],
-      mainAim:          ['projectIdea', 'mainAim'],
-      stateOfTheArt:    ['projectIdea', 'stateOfTheArt'],
-      proposedSolution: ['projectIdea', 'proposedSolution'],
-      policies:         ['projectIdea', 'policies'],
-      readinessLevels:  ['projectIdea', 'readinessLevels'],
-    };
-    const _readPath = SUB_SECTION_READ_MAP[sectionKey];
-    const sectionData = _readPath
-      ? _readPath.reduce((obj: any, key: string) => obj && obj[key], pm.projectData)
-      : pm.projectData[sectionKey];
+    const sectionData = pm.projectData[sectionKey] || (pm.projectData.projectIdea && pm.projectData.projectIdea[sectionKey]);
     if (!sectionData) return;
-    // ★ EO-MASTER C3: Capture project ID before async work — detect project switch during inject
-    const _injectProjectId = pm.currentProjectId;
     generation.setIsLoading(language === 'si' ? 'Dodajam reference k besedilu...' : 'Adding references to text...');
     try {
       // EO-147e: Pass cleanedRefs directly — pipeline sees correct starting state immediately
@@ -577,30 +558,13 @@ const App = () => {
         sectionKey, sectionData, pm.projectData, language, cleanedRefs
       );
 
-      // ★ EO-MASTER C3: Guard — discard if project switched during the await
-      if (pm.currentProjectId !== _injectProjectId) {
-        console.error('[EO-MASTER C3] Project switched during inject — discarding result for "' + sectionKey + '"');
-        generation.setIsLoading(false);
-        return;
-      }
-
       // EO-147e: Merge cleanedRefs + newRefs atomically — never duplicates
       const finalRefs = [...cleanedRefs, ...newRefs];
-      pm.setProjectData((prev: any) => {
-        const next = { ...prev, references: finalRefs };
-        // ★ EO-MASTER C2: Correct write path for nested sub-sections
-        if (_readPath && _readPath.length === 2) {
-          const [parentKey, childKey] = _readPath;
-          next[parentKey] = {
-            ...(prev[parentKey] || {}),
-            [childKey]: updatedSectionData,
-          };
-          console.log('[EO-MASTER C2] Wrote back "' + sectionKey + '" to ' + parentKey + '.' + childKey);
-        } else {
-          next[sectionKey] = updatedSectionData;
-        }
-        return next;
-      });
+      pm.setProjectData((prev: any) => ({
+        ...prev,
+        [sectionKey]: updatedSectionData,
+        references: finalRefs,
+      }));
 
       // EO-147b: URL verification for injected references (fire-and-forget)
       if (newRefs.length > 0) {

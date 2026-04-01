@@ -1,9 +1,4 @@
 // hooks/useGeneration.ts
-// v7.92 — 2026-04-01 — EO-175R PATCH 4:
-//         CHANGE D: EO-152 auto-repair DISABLED for ER composite. Empty-URL refs are
-//         intentional (approved-sources pipeline) — not broken. Standalone path (PA/GO/SO/PI)
-//         does NOT have EO-152 and works correctly. 2×14 refs × 4 retries = 18 min wasted.
-//         CHANGE E: Same fix for Activities composite EO-152 block.
 // v7.91 — 2026-04-01 — EO-175R PATCH 2 CHANGE B: repairBrokenReferenceUrls gains a circuit
 //         breaker — if 3 consecutive API calls return MODEL_OVERLOADED (503/overloaded),
 //         the loop stops early and all remaining broken refs are marked verificationStatus:
@@ -6004,10 +5999,46 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
               _updatePhase('urlVerification', 'running'); // [EO-137b]
               _verifyUrlsAfterSave(newData.references, setProjectData, currentProjectId, language, storageService, _postSaveSignal);  // ★ EO-168
               setTimeout(() => _updatePhase('urlVerification', 'completed'), 500); // [EO-137b]
-              // ★ EO-175R-P4: EO-152 auto-repair DISABLED for Activities composite.
-              // Same root cause as ER: approved-sources pipeline intentionally leaves URL empty.
-              // Standalone path does NOT have EO-152 and works correctly.
-              console.log('[EO-175R-P4] EO-152 auto-repair DISABLED for Activities composite — empty-URL refs are intentional.');
+              // EO-152: Auto-repair for activities refs with empty URLs
+              // ★ EO-168 PART B: Guard against double-execution
+              let _eo152ActivitiesRepairExecuted = false;
+              setTimeout(async () => {
+                // ★ EO-168 PART B: Skip if already ran or if superseded by newer generation
+                if (_eo152ActivitiesRepairExecuted) {
+                  console.log('[EO-168] EO-152 Activities repair: already executed, skipping duplicate');
+                  return;
+                }
+                _eo152ActivitiesRepairExecuted = true;
+                try {
+                  const allRefs = Array.isArray(newData.references) ? newData.references : [];
+                  const emptyUrlRefs = allRefs.filter((r: any) =>
+                    r.sectionKey &&
+                    (r.sectionKey === 'projectManagement' || r.sectionKey === 'risks' ||
+                     r.sectionKey === 'partners' || r.sectionKey.startsWith('activities_wp')) &&
+                    (!r.url || r.url.trim().length === 0) &&
+                    r.title && r.title.trim().length > 0
+                  );
+                  if (emptyUrlRefs.length > 0) {
+                    console.log('[EO-152] Auto-repair: ' + emptyUrlRefs.length + ' Activities refs have empty URLs — starting repair...');
+                    const repaired = await repairBrokenReferenceUrls(emptyUrlRefs, language);
+                    if (repaired.length > 0) {
+                      setProjectData((prev: any) => {
+                        const refs = [...(prev.references || [])];
+                        for (const rep of repaired) {
+                          const idx = refs.findIndex((r: any) => r.id === rep.id);
+                          if (idx !== -1) refs[idx] = { ...refs[idx], ...rep };
+                        }
+                        return { ...prev, references: refs };
+                      });
+                      const grounding = repaired.filter((r: any) => r.verificationMethod === 'google-search-grounding').length;
+                      const scholar = repaired.filter((r: any) => r.verificationMethod === 'google-scholar-fallback').length;
+                      console.log('[EO-152] Auto-repair complete: ' + grounding + ' via grounding, ' + scholar + ' via Scholar');
+                    }
+                  }
+                } catch (repairErr) {
+                  console.warn('[EO-152] Auto-repair failed (non-fatal):', repairErr);
+                }
+              }, 3000);
             } else {
               _updatePhase('urlVerification', 'skipped'); // [EO-137b]
             }
@@ -6501,16 +6532,46 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                           _updatePhase('urlVerification', 'running'); // [EO-137b]
                           _verifyUrlsAfterSave(renumData.references, setProjectData, currentProjectId, language, storageService, _postSaveSignal);  // ★ EO-168
                           setTimeout(() => _updatePhase('urlVerification', 'completed'), 500); // [EO-137b]
-                          // ★ EO-175R-P4: EO-152 auto-repair DISABLED for ER composite.
-                          // ROOT CAUSE: Approved-sources pipeline intentionally leaves URL empty
-                          // when no matching source exists in the approved pool (verificationStatus:
-                          // 'not_in_approved_sources'). These are NOT broken — they are correctly
-                          // processed. Standalone path (PA/GO/SO/PI) does NOT have EO-152 and works
-                          // correctly — repair runs only for verified-then-broken URLs via EO-172
-                          // inside _verifyUrlsAfterSave. EO-152 was triggering 2×14 refs × 4 retries
-                          // × 20s backoff = 18 minutes of wasted API calls with 0% success rate.
-                          // User can manually repair via the UI "Repair references" button.
-                          console.log('[EO-175R-P4] EO-152 auto-repair DISABLED for ER composite — empty-URL refs are intentional (approved-sources pipeline). Use manual repair button if needed.');
+                          // EO-152: Auto-repair references with empty or broken URLs after composite
+                          // ★ EO-168 PART B: Guard against double-execution
+                          let _eo152ERRepairExecuted = false;
+                          setTimeout(async () => {
+                            // ★ EO-168 PART B: Skip if already ran
+                            if (_eo152ERRepairExecuted) {
+                              console.log('[EO-168] EO-152 ER repair: already executed, skipping duplicate');
+                              return;
+                            }
+                            _eo152ERRepairExecuted = true;
+                            try {
+                              const allRefs = Array.isArray(renumData.references) ? renumData.references : [];
+                              const emptyUrlRefs = allRefs.filter((r: any) =>
+                                r.sectionKey && ['outputs','outcomes','impacts','kers'].includes(r.sectionKey) &&
+                                (!r.url || r.url.trim().length === 0) &&
+                                r.title && r.title.trim().length > 0
+                              );
+                              if (emptyUrlRefs.length > 0) {
+                                console.log('[EO-152] Auto-repair: ' + emptyUrlRefs.length + ' ER refs have empty URLs — starting repair...');
+                                const repaired = await repairBrokenReferenceUrls(emptyUrlRefs, language);
+                                if (repaired.length > 0) {
+                                  setProjectData((prev: any) => {
+                                    const refs = [...(prev.references || [])];
+                                    for (const rep of repaired) {
+                                      const idx = refs.findIndex((r: any) => r.id === rep.id);
+                                      if (idx !== -1) refs[idx] = { ...refs[idx], ...rep };
+                                    }
+                                    return { ...prev, references: refs };
+                                  });
+                                  const grounding = repaired.filter((r: any) => r.verificationMethod === 'google-search-grounding').length;
+                                  const scholar = repaired.filter((r: any) => r.verificationMethod === 'google-scholar-fallback').length;
+                                  console.log('[EO-152] Auto-repair complete: ' + grounding + ' via grounding, ' + scholar + ' via Scholar');
+                                }
+                              } else {
+                                console.log('[EO-152] No empty-URL refs found — skipping auto-repair');
+                              }
+                            } catch (repairErr) {
+                              console.warn('[EO-152] Auto-repair failed (non-fatal):', repairErr);
+                            }
+                          }, 3000); // Wait 3s for URL verification to finish first
                         } else {
                           _updatePhase('urlVerification', 'skipped'); // [EO-137b]
                         }

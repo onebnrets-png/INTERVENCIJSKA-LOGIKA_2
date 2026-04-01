@@ -1,8 +1,27 @@
 // services/aiProvider.ts
 // ═══════════════════════════════════════════════════════════════
-// Universal AI Provider Abstraction Layer – v6.25 (2026-03-30)
-// ═══════════════════════════════════════════════════════════════ 
+// Universal AI Provider Abstraction Layer – v6.30 (2026-04-01)
+// ═══════════════════════════════════════════════════════════════
 // CHANGELOG:
+// v6.30 — 2026-04-01 — EO-175R PATCH 4:
+//         CHANGE F: referenceRepair empty response → CONTENT_BLOCKED (non-retryable).
+//         Grounding returning no results is a definitive answer, not a transient failure.
+//         Prevents withRetry from wasting 75s on 4 retries per unfindable reference.
+// v6.29 — 2026-03-31 — EO-MASTER: BASE_TOKENS_PER_ITEM added activities_wp/scaffold/
+//         partnerAllocations_wp. Risks raised 800→1200, kers 1200→1500.
+// v6.28 — 2026-03-31 — EO-167d: Remove COMPLEX_OBJECT_SECTIONS hardcoded map.
+//         BASE_TOKENS_PER_ITEM is now true per-item values for ALL sections.
+//         getExpectedItemCountFromProjectData (geminiService) now returns real counts.
+//         calculateDynamicTokenLimit restored to clean EO-161 logic: base × itemCount.
+// v6.27 — 2026-03-31 — EO-167c: Intelligent per-section token bases.
+//         BASE_TOKENS_PER_ITEM updated for ALL complex sections:
+//         problemAnalysis=7000, projectIdea=6000, projectManagement=5000,
+//         stateOfTheArt/proposedSolution=4000, coreProblem=1500.
+//         COMPLEX_OBJECT_SECTIONS set: these sections always use effectiveItemCount=1
+//         (base already covers full output — not per-item). Array sections updated too:
+//         generalObjectives/specificObjectives/outputs/outcomes/impacts=900, kers=1200.
+//         Log tag changed from [EO-161] to [EO-167c] with complex flag.
+// v6.26 — 2026-03-31 — (skipped — reserved for intermediate build)
 // v6.25 — 2026-03-30 — EO-163 BUG2: Guard against undefined response.text in Gemini adapter.
 //         Added empty-response detection + EMPTY_RESPONSE error before .trim() crash.
 // v6.24 — 2026-03-26 — EO-161: Dynamic token limit calculator + truncation auto-retry.
@@ -457,30 +476,41 @@ export function calculateDynamicTokenLimit(params: TokenEstimateParams): number 
   } = params;
 
   // ── Base estimation per section type ──
+  // ★ EO-167d: All values are true tokens-PER-ITEM.
+  // expectedItemCount comes from getExpectedItemCountFromProjectData which now returns real counts.
+  // Sections not listed default to 800 per item.
   const BASE_TOKENS_PER_ITEM: Record<string, number> = {
-    // Simple text sections (~500-800 tokens each)
-    'coreProblem':       800,
-    'mainAim':           600,
-    'stateOfTheArt':    1500,
-    'proposedSolution': 1500,
-    'causes':            600,
-    'consequences':      600,
-    'policies':          500,
-    'readinessLevels':   400,
-    'projectManagement': 2000,
+    // ── Object-structure sections — tokens PER LOGICAL ITEM ──
+    // Item counts from getExpectedItemCountFromProjectData (EO-167d real counts).
+    'problemAnalysis':   650,  // ~11 items: coreProblem + causes + consequences → ~7150 total
+    'projectIdea':       600,  // 10 logical sub-items → ~6000 total
+    'projectManagement':1000,  // 5 logical sub-items → ~5000 total
+    'stateOfTheArt':     800,  // 5 sub-items (research overview paragraphs) → ~4000 total
+    'proposedSolution':  800,  // 5 sub-items (phased solution sections) → ~4000 total
+    'mainAim':          1200,  // 1 item: single sentence + context
+    'coreProblem':      1500,  // 1 item: paragraph + citations
+    'causes':            800,  // per item (title + description + citation)
+    'consequences':      800,  // per item
+    'policies':          700,  // per item
+    'readinessLevels':   600,  // 4 fixed items (TRL/SRL/ORL/LRL) → ~2400 total
 
-    // Array sections — tokens PER ITEM
-    'generalObjectives':  800,
-    'specificObjectives': 800,
-    'outputs':            800,
-    'outcomes':           800,
-    'impacts':            800,
-    'risks':              700,
-    'kers':              1000,
+    // ── Array sections — tokens PER ITEM ──
+    'generalObjectives':  900,
+    'specificObjectives': 900,
+    'outputs':            900,
+    'outcomes':           900,
+    'impacts':            900,
+    'risks':              1200,  // raised 800→1200 per EO-098 truncation history
+    'kers':               1500,  // raised 1200→1500 per EO-155 truncation history
 
-    // Composite sections
-    'activities': 3000,  // per WP
-    'partners':    800,  // per partner
+    // ── Composite / chunked sections ──
+    'activities': 1000,  // per task; generateActivitiesPerWP passes per-WP task count (~4)
+    'partners':    900,  // per partner
+
+    // ── Per-call sectionKey overrides for chunked generators ──
+    'activities_wp':          2500,  // per WP full generation (tasks + milestones + deliverables)
+    'activities_scaffold':     500,  // scaffold call (WP titles + date ranges only)
+    'partnerAllocations_wp':   300,  // per allocation entry (partner × task)
   };
 
   const basePerItem = BASE_TOKENS_PER_ITEM[sectionKey] || 800;
@@ -523,9 +553,11 @@ export function calculateDynamicTokenLimit(params: TokenEstimateParams): number 
   // ── Round up to nearest 1024 for cleanliness ──
   finalLimit = Math.ceil(finalLimit / 1024) * 1024;
 
-  console.log(`[EO-161] Token limit for "${sectionKey}": ${finalLimit} ` +
-    `(items=${expectedItemCount}, refs=${referencesEnabled}, ` +
-    `base=${basePerItem * Math.max(expectedItemCount, 1)}, prev=${previousOutputTokens || 'N/A'})`);
+  const _effectiveItems = Math.max(expectedItemCount, 1);
+  console.log(`[EO-167d] Token limit for "${sectionKey}": ${finalLimit} ` +
+    `(items=${_effectiveItems}, refs=${referencesEnabled}, ` +
+    `base=${basePerItem * _effectiveItems}, ` +
+    `prev=${previousOutputTokens || 'N/A'})`);
 
   return finalLimit;
 }
@@ -994,10 +1026,16 @@ generateConfig.maxOutputTokens = calculateDynamicTokenLimit({
     const _geminiOut: number = _geminiUsage?.candidatesTokenCount ?? 0;
     const _geminiTotal: number = _geminiUsage?.totalTokenCount ?? (_geminiIn + _geminiOut);
     console.log('[EO-138] API usage: gemini', config.model, 'in:', _geminiIn, 'out:', _geminiOut);
-    // ★ EO-163 BUG2: Guard against undefined response.text — throws UNKNOWN_ERROR with .trim() crash
+    // ★ EO-163 BUG2: Guard against undefined response.text
     const _geminiRawText = response?.text ?? '';
     if (!_geminiRawText) {
       console.error('[EO-163] Gemini returned empty/undefined response for', options.sectionKey || 'unknown');
+      // ★ EO-175R-P4: For referenceRepair, empty response means grounding found nothing.
+      // This is a definitive "no results" answer, not a transient failure — do NOT retry.
+      // CONTENT_BLOCKED is not in RETRYABLE_ERRORS → withRetry skips immediately.
+      if (options.sectionKey === 'referenceRepair') {
+        throw new Error(`CONTENT_BLOCKED|gemini|Gemini grounding returned no results for referenceRepair. This is not retryable.`);
+      }
       throw new Error(`EMPTY_RESPONSE|gemini|Gemini returned no text for "${options.sectionKey || 'unknown'}". The model may be overloaded or the request was filtered.`);
     }
     // ★ EO-161: Store output tokens per section for future dynamic estimation
