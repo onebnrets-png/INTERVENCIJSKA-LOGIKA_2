@@ -169,7 +169,7 @@ const _GS_CHAPTER_PREFIX: Record<string, string> = {
   projectManagement: 'PM', partners: 'PT', risks: 'RS',
   coreProblem: 'PA', causes: 'PA', consequences: 'PA',
   mainAim: 'PI', stateOfTheArt: 'PI', proposedSolution: 'PI', policies: 'PI',
-  outputs: 'ER', outcomes: 'ER', impacts: 'ER', kers: 'ER',
+  outputs: 'OU', outcomes: 'OC', impacts: 'IM', kers: 'KE',
 };
 function _gsGetPrefix(sectionKey: string): string {
   if (_GS_CHAPTER_PREFIX[sectionKey]) return _GS_CHAPTER_PREFIX[sectionKey];

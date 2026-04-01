@@ -250,7 +250,7 @@ const findReferenceByInlineMarker = (
         projectIdea: 'PI', mainAim: 'PI', stateOfTheArt: 'PI', proposedSolution: 'PI', policies: 'PI',
         generalObjectives: 'GO', specificObjectives: 'SO',
         activities: 'AC', projectManagement: 'PM', partners: 'PT', risks: 'RS',
-        expectedResults: 'ER', outputs: 'ER', outcomes: 'ER', impacts: 'ER', kers: 'ER',
+        expectedResults: 'ER', outputs: 'OU', outcomes: 'OC', impacts: 'IM', kers: 'KE',
       };
       const _dmSk = sectionKey || (topLevelKey || '');
       const _dmPrefix = _dmChapterMap[_dmSk] || '';
@@ -430,7 +430,7 @@ const SectionGenerateWithToggle = ({ sectionKey, projectData, onUpdateData, onGe
             const prefixMap: Record<string, string> = {
               problemAnalysis: 'PA', projectIdea: 'PI', generalObjectives: 'GO',
               specificObjectives: 'SO', activities: 'AC', projectManagement: 'PM',
-              risks: 'RI', outputs: 'ER', outcomes: 'ER', impacts: 'ER', kers: 'KE',
+              risks: 'RS', outputs: 'OU', outcomes: 'OC', impacts: 'IM', kers: 'KE',
             };
             return prefixMap[sk] || 'REF';
           })()

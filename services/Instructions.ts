@@ -1626,7 +1626,7 @@ For EVERY numbered inline citation marker you use in the generated text, create 
    NEVER use bare numbers "[1]" — ALWAYS use the chapter prefix format "[PA-1]", "[SO-2]", etc.
 3. Prefix must match the section being generated:
    PA = problemAnalysis, PI = projectIdea, GO = generalObjectives, SO = specificObjectives,
-   AC = activities, PM = projectManagement, RI = risks, ER = outputs/outcomes/impacts, KE = kers
+   AC = activities, PM = projectManagement, RS = risks, OU = outputs, OC = outcomes, IM = impacts, KE = kers, PT = partners
 4. Numbers are sequential within each prefix group: [PA-1], [PA-2], [PA-3]...
 5. NEVER generate URLs containing: example.com, example.org, fictional-, placeholder, genericjournal
 6. NEVER generate DOIs with prefixes: 10.1000, 10.9999, 10.0000, 10.1234, 10.5555 (these are placeholders)

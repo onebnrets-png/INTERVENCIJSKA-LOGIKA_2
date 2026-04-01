@@ -171,10 +171,10 @@ const ReferencesBlock: React.FC<ReferencesBlockProps> = ({
     const deduped = dedupeReferences(filtered);
 
     // EO-168c PROBLEM 3: Sort by (prefixGroup, markerNumber) so refs group cleanly:
-    // PA-1, PA-2, PI-1, PI-2, GO-1, SO-1, AC-1, PM-1, PT-1, RS-1, RI-1, ER-1 …
+    // PA-1, PA-2, PI-1, PI-2, GO-1, SO-1, AC-1, PM-1, PT-6, RS-1, OU-1, OC-1, IM-1, KE-1, ER-1 …
     // Refs with no recognisable prefix fall to the end, sorted by title.
     const _PREFIX_ORDER: Record<string, number> = {
-      PA: 0, PI: 1, GO: 2, SO: 3, AC: 4, PM: 5, PT: 6, RS: 7, RI: 8, ER: 9,
+      PA: 0, PI: 1, GO: 2, SO: 3, AC: 4, PM: 5, PT: 6, RS: 7, OU: 8, OC: 9, IM: 10, KE: 11, ER: 12,
     };
     const _getPrefixAndNum = (marker: string | undefined): { prefix: string; num: number } => {
       if (!marker) return { prefix: '', num: Infinity };

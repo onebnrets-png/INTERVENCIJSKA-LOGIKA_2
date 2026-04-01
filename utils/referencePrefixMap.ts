@@ -1,5 +1,10 @@
 // utils/referencePrefixMap.ts
 // ★ EO-159: Shared chapter prefix map — used by 7+ files
+// v1.1 — 2026-04-01 — Fix #1: risks RI→RS, kers KE→ER, partners PC→PT.
+//         Previous values (RI/KE/PC) never matched the prefixes used by
+//         geminiService.ts, useGeneration.ts, and ProjectDisplay.tsx (RS/ER/PT),
+//         causing getChapterPrefix() to return wrong values → FieldCitationsPreview
+//         lookup failures and "Reference not found" for all risks/kers refs.
 // v1.0 — 2026-03-26
 
 export const SECTION_PREFIX_MAP: Record<string, string> = {
@@ -9,10 +14,10 @@ export const SECTION_PREFIX_MAP: Record<string, string> = {
   'generalObjectives': 'GO',
   'specificObjectives': 'SO',
   'activities': 'AC', 'projectManagement': 'PM',
-  'risks': 'RI',
-  'outputs': 'ER', 'outcomes': 'ER', 'impacts': 'ER',
+  'risks': 'RS',
+  'outputs': 'OU', 'outcomes': 'OC', 'impacts': 'IM',
   'kers': 'KE',
-  'partners': 'PC',
+  'partners': 'PT',
 };
 
 export const getChapterPrefix = (sectionKey: string): string => {

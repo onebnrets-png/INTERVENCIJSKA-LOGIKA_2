@@ -96,7 +96,7 @@
 //         numbering only — not removal — confirmed safe, no change needed.
 // v7.77 — 2026-03-31 — EO-167b: CRITICAL — Fix reference merge destroying existing refs on regeneration.
 //         Root cause: _runFullReferencePipeline STEP 1 filtered by chapterPrefix, not sectionKey.
-//         outputs/outcomes/impacts/kers all share prefix 'ER' via getChapterForSection.
+//         outputs/outcomes/impacts/kers previously all shared prefix 'ER' (now OU/OC/IM/KE).
 //         Regenerating 'outputs' removed ALL ER-* refs including those owned by impacts/outcomes/kers.
 //         FIX: STEP 1 now filters by r.sectionKey === sectionKey ONLY — never touches refs from
 //         other sections even if they share the same chapterPrefix.
@@ -433,6 +433,10 @@ const CHAPTER_REF_PREFIX: Record<string, string> = {
   projectManagement: 'PM',
   partners:          'PT',
   risks:             'RS',
+  outputs:           'OU',
+  outcomes:          'OC',
+  impacts:           'IM',
+  kers:              'KE',
 };
 
 function _getChapterPrefix(sectionKey: string): string {
@@ -731,9 +735,9 @@ function _runFullReferencePipeline(
   }
   // ★ EO-167b CRITICAL FIX: Filter by sectionKey ONLY — never by chapterPrefix.
   // Prior code (EO-159 BUG 6) filtered by chapterPrefix, which destroyed refs from OTHER sections
-  // sharing the same prefix. E.g., outputs / outcomes / impacts / kers all resolve to prefix 'ER'
-  // via getChapterForSection. Regenerating 'outputs' removed ALL ER-* refs — including refs that
-  // impacts, outcomes, and kers still cited — causing "Reference not found" for every ER marker.
+  // sharing the same prefix. E.g., outputs / outcomes / impacts / kers previously all resolved to
+  // prefix 'ER' (now unique: OU/OC/IM/KE). Regenerating 'outputs' would have removed ALL ER-* refs
+  // — including refs that impacts, outcomes, and kers still cited — "Reference not found" for all.
   var _origRefCountForSafetyGuard = _currentRefs.length;
   var _cleanedRefs = _currentRefs.filter(function(r: any) {
     if (!r.sectionKey) return true;   // keep refs with no explicit sectionKey
@@ -978,6 +982,18 @@ function _runFullReferencePipeline(
     }
   }
 
+    // ★ FIX: Cap STEP 5 placeholder refs — same limits as STEP 3b (EO-102C)
+    // Without this cap, when Gemini generates [ER-1] through [ER-48] in text but
+    // omits the _references array, STEP 5 creates 48 placeholder refs uncapped.
+    if (_extractedRefs.length > 0) {
+      var _step5MaxRefs = _REF_CAPS[sectionKey] ?? 8;
+      if (sectionKey.startsWith('activities_wp')) _step5MaxRefs = 2;
+      if (_extractedRefs.length > _step5MaxRefs) {
+        console.warn('[STEP5-CAP] Capping placeholder refs for "' + sectionKey + '": ' + _extractedRefs.length + ' → ' + _step5MaxRefs);
+        _extractedRefs = _extractedRefs.slice(0, _step5MaxRefs);
+      }
+    }
+
   // ═══ STEP 6: Dedup + Merge into newData.references ═══
   if (_extractedRefs.length > 0) {
     var _deduped: any[] = [];
@@ -1009,6 +1025,31 @@ function _runFullReferencePipeline(
       });
       if (_eo173StrippedCount > 0) {
         console.warn('[EO-173] Stripped ' + _eo173StrippedCount + ' invalid URLs (Scholar query or Vertex redirect) in "' + sectionKey + '"');
+      }
+
+      // ★ FIX: When no approved sources available, strip URLs that are likely
+      // hallucinated. Keep only high-confidence URLs (DOI-based, EU institutions,
+      // major international organizations). Everything else is stripped because
+      // without an approved pool, Gemini has no verified URLs to copy from.
+      if (!_opts.approvedSources || _opts.approvedSources.length === 0) {
+        var _noPoolStripped = 0;
+        _proposedRefs = _proposedRefs.map(function(r: any) {
+          if (r.sectionKey && r.sectionKey !== sectionKey) return r;
+          if (!r.url) return r;
+          // Keep DOI-based URLs (high confidence — constructed from real DOIs)
+          if (r.url.includes('doi.org/')) return r;
+          // Keep EU institutional domains (low hallucination risk)
+          if (r.url.includes('europa.eu') || r.url.includes('ec.europa.eu')) return r;
+          // Keep major international organization domains
+          if (r.url.includes('who.int') || r.url.includes('oecd.org') || r.url.includes('worldbank.org')) return r;
+          if (r.url.includes('un.org') || r.url.includes('unesco.org')) return r;
+          // Everything else is likely hallucinated — strip it
+          _noPoolStripped++;
+          return { ...r, url: '', urlVerified: false, verificationStatus: 'no_approved_pool', resolvedUrl: '' };
+        });
+        if (_noPoolStripped > 0) {
+          console.warn('[FIX-HALLUCINATION] No approved source pool — stripped ' + _noPoolStripped + ' potentially hallucinated URLs for "' + sectionKey + '"');
+        }
       }
 
       // ★ EO-175R: Post-generation safety net — strip hallucinated URLs.
@@ -1399,7 +1440,7 @@ const _renumberAllReferences = (data: any): void => {
   });
 
   // Chapter display order (matches _SECTION_ORDER_FOR_REFS logic)
-  const CHAPTER_ORDER = ['PA','PI','GO','SO','PM','PT','AC','ER','RS','RF'];
+  const CHAPTER_ORDER = ['PA','PI','GO','SO','PM','PT','AC','OU','OC','IM','KE','RS','ER','RF'];
 
   // Build old→new marker map, sorted per-chapter
   const markerMap: Array<{ old: string; new: string; placeholder: string }> = [];
