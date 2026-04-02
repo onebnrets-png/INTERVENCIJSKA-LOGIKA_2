@@ -6348,27 +6348,6 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
               console.log('[EO-MASTER-2b] ER pre-composite cleanup (LOCAL copy): removed ' + _erPreRemoved + ' old ER/OU/OC/IM/KE refs. Kept: ' + _erCleanedRefs.length + '. projectData.references UNTOUCHED: ' + projectData.references.length);
             }
 
-            // ★ v1.12.24: CHANGE 2 — Strip stale ER/OU/OC/IM/KE markers from text fields
-            // before regeneration to prevent ghost markers surviving into newly generated text.
-            var _staleErMarkerRegex = /\[(ER|OU|OC|IM|KE)-\d+\]/g;
-            var _erTextFields = ['outputs', 'outcomes', 'impacts', 'kers'];
-            for (var _etf of _erTextFields) {
-              if (typeof (newData as any)[_etf] === 'string') {
-                var _etfBefore = (newData as any)[_etf] as string;
-                var _etfAfter = _etfBefore.replace(_staleErMarkerRegex, '');
-                if (_etfAfter !== _etfBefore) {
-                  (newData as any)[_etf] = _etfAfter;
-                }
-              } else if (Array.isArray((newData as any)[_etf])) {
-                var _etfArrJson = JSON.stringify((newData as any)[_etf]);
-                if (_staleErMarkerRegex.test(_etfArrJson)) {
-                  _staleErMarkerRegex.lastIndex = 0; // reset stateful regex after .test()
-                  (newData as any)[_etf] = JSON.parse(_etfArrJson.replace(_staleErMarkerRegex, ''));
-                }
-                _staleErMarkerRegex.lastIndex = 0;
-              }
-            }
-
             var _erRunningRefs: any[] = _erCleanedRefs.slice();
 
             // ★ EO-175R PATCH 1: Fetch approved sources for ALL ER sections ONCE before the loop.
@@ -6475,6 +6454,25 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                       _recordUsage(projectData as any, s, generatedData._usage, 'composite');
                     } catch (usageErr) { console.warn('[EO-160c] _recordUsage failed for', s, usageErr); }
                   }
+
+                  // ═══ v1.12.25 HOTFIX – Ghost-marker strip (AFTER generatedData is populated) ═══
+                  // Must run AFTER AI generates content, BEFORE reference pipeline renumbers markers.
+                  // Strips stale [ER/OU/OC/IM/KE-N] markers that may survive in AI output from
+                  // previous generations — prevents phantom ref markers in the new content.
+                  {
+                    const _staleErMarkerRegex = /\[(ER|OU|OC|IM|KE)-\d+\]/g;
+                    if (typeof generatedData === 'string') {
+                      generatedData = (generatedData as string).replace(_staleErMarkerRegex, '');
+                    } else if (generatedData !== null && typeof generatedData === 'object') {
+                      const _gdJson = JSON.stringify(generatedData);
+                      if (_staleErMarkerRegex.test(_gdJson)) {
+                        _staleErMarkerRegex.lastIndex = 0;
+                        generatedData = JSON.parse(_gdJson.replace(_staleErMarkerRegex, ''));
+                      }
+                    }
+                    console.log('[EO-GHOST-STRIP] Stale ER/OU/OC/IM/KE markers stripped from generatedData[' + s + '] before reference pipeline');
+                  }
+                  // ═══ END v1.12.25 HOTFIX ═══
 
                   // [EO-130i] Guard: only run reference pipeline when refs are enabled for this chapter
                   if (_compRefsEnabled) {
