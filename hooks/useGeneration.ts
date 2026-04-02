@@ -6321,34 +6321,61 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
             // Each section starts from the refs accumulated by ALL previous sections in this composite,
             // not from the stale projectData.references snapshot (which causes all sections to reuse the same marker numbers).
 
-            // ★ EO-MASTER-2b FIX 2: NEVER mutate projectData (React state prop).
-            // Previous code did (projectData as any).references = ... which mutated React state in-place.
-            // FIX: Create local cleaned copy for _erRunningRefs. projectData stays untouched.
-            // ★ v1.12.24: CHANGE 1 — Remove ALL Expected Results refs regardless of chapterPrefix.
-            // Before v1.12.21 all ER sub-sections shared chapterPrefix='ER'. After _migrateERtoSplitPrefixes
-            // they have chapterPrefix OU/OC/IM/KE. Both old and migrated refs must be removed so the
-            // pipeline starts clean. Primary filter is sectionKey (same as PA/GO/SO/PI approach).
-            // chapterPrefix filter is a safety net for refs missing a sectionKey.
-            var _erCleanedRefs: any[] = [];
-            if (Array.isArray(projectData.references)) {
-              const _erPreBefore = projectData.references.length;
+            // ═══ v1.12.26 – EO-MASTER-2b: ER pre-composite cleanup ═══
+            // Copied from Activities [EO-130h] pattern: clean projectData.references directly
+            // so that [EO-141] renumber sees the correct ref count (not inflated stale refs).
+            {
               const _erSectionKeys = new Set(['outputs', 'outcomes', 'impacts', 'kers', 'expectedResults']);
               const _erPrefixes = new Set(['ER', 'OU', 'OC', 'IM', 'KE']);
-              _erCleanedRefs = projectData.references.filter(function(r: any) {
-                // Primary: remove by sectionKey (works for all refs that have one)
+
+              const beforeCount = (projectData.references || []).length;
+
+              projectData.references = (projectData.references || []).filter((r: any) => {
+                // Layer 1: remove by sectionKey
                 if (r.sectionKey && _erSectionKeys.has(r.sectionKey)) return false;
-                // Safety net: also remove by chapterPrefix for refs without sectionKey
-                // (catches pre-migration ER refs and post-migration OU/OC/IM/KE refs)
+                // Layer 2: remove by chapterPrefix (pre-migration leftovers without sectionKey)
                 if (!r.sectionKey && r.chapterPrefix && _erPrefixes.has(r.chapterPrefix)) return false;
-                // Secondary: catch any remaining expectedResults-chapter refs
-                if (r.sectionKey && getChapterForSection(r.sectionKey) === 'expectedResults') return false;
                 return true;
               });
-              const _erPreRemoved = _erPreBefore - _erCleanedRefs.length;
-              console.log('[EO-MASTER-2b] ER pre-composite cleanup (LOCAL copy): removed ' + _erPreRemoved + ' old ER/OU/OC/IM/KE refs. Kept: ' + _erCleanedRefs.length + '. projectData.references UNTOUCHED: ' + projectData.references.length);
-            }
 
-            var _erRunningRefs: any[] = _erCleanedRefs.slice();
+              const removedCount = beforeCount - projectData.references.length;
+              console.log(`[EO-MASTER-2b] ER pre-composite cleanup: removed ${removedCount} old ER/OU/OC/IM/KE refs from projectData.references. Remaining: ${projectData.references.length}`);
+            }
+            // ═══ END v1.12.26 EO-MASTER-2b ═══
+
+            // ═══ v1.12.26 – Purge stale [ER-*] ghost markers from ALL text fields ═══
+            {
+              const _erGhostRegex = /\[ER-\d+\]/g;
+              let _purgedCount = 0;
+              for (const f of Object.keys(projectData)) {
+                if (typeof (projectData as any)[f] === 'string') {
+                  _erGhostRegex.lastIndex = 0;
+                  if (_erGhostRegex.test((projectData as any)[f])) {
+                    _erGhostRegex.lastIndex = 0;
+                    const before = (projectData as any)[f] as string;
+                    const after = before.replace(_erGhostRegex, '');
+                    const matches = before.match(_erGhostRegex);
+                    _purgedCount += (matches || []).length;
+                    (projectData as any)[f] = after;
+                  }
+                } else if (Array.isArray((projectData as any)[f])) {
+                  const json = JSON.stringify((projectData as any)[f]);
+                  _erGhostRegex.lastIndex = 0;
+                  if (_erGhostRegex.test(json)) {
+                    _erGhostRegex.lastIndex = 0;
+                    const matches = json.match(_erGhostRegex);
+                    _purgedCount += (matches || []).length;
+                    (projectData as any)[f] = JSON.parse(json.replace(_erGhostRegex, ''));
+                  }
+                }
+              }
+              if (_purgedCount > 0) {
+                console.log(`[EO-176-PURGE] Removed ${_purgedCount} stale [ER-*] ghost markers from project text fields`);
+              }
+            }
+            // ═══ END v1.12.26 purge ═══
+
+            var _erRunningRefs: any[] = (projectData.references || []).slice();
 
             // ★ EO-175R PATCH 1: Fetch approved sources for ALL ER sections ONCE before the loop.
             // Without this, generateSectionContent for outputs/outcomes/impacts/kers receives
