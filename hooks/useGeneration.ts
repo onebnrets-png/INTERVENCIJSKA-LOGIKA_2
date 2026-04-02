@@ -6321,61 +6321,54 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
             // Each section starts from the refs accumulated by ALL previous sections in this composite,
             // not from the stale projectData.references snapshot (which causes all sections to reuse the same marker numbers).
 
-            // ═══ v1.12.26 – EO-MASTER-2b: ER pre-composite cleanup ═══
-            // Copied from Activities [EO-130h] pattern: clean projectData.references directly
-            // so that [EO-141] renumber sees the correct ref count (not inflated stale refs).
-            {
-              const _erSectionKeys = new Set(['outputs', 'outcomes', 'impacts', 'kers', 'expectedResults']);
-              const _erPrefixes = new Set(['ER', 'OU', 'OC', 'IM', 'KE']);
+            // ═══ v1.12.27 – EO-MASTER-2b FIX: Clean local copy, not projectData (React anti-pattern) ═══
+            // Activities pattern: newData.references = newData.references.filter(...)
+            // ER must do the same — never mutate projectData directly.
+            const _erSectionKeys177 = new Set(['outputs', 'outcomes', 'impacts', 'kers', 'expectedResults']);
+            const _erPrefixes177 = new Set(['ER', 'OU', 'OC', 'IM', 'KE']);
+            const _erCleanedRefs = (projectData.references || []).filter((r: any) => {
+              if (r.sectionKey && _erSectionKeys177.has(r.sectionKey)) return false;
+              if (!r.sectionKey && r.chapterPrefix && _erPrefixes177.has(r.chapterPrefix)) return false;
+              return true;
+            });
+            const _erRemovedCount = (projectData.references || []).length - _erCleanedRefs.length;
+            console.log(`[EO-MASTER-2b] ER pre-composite cleanup: removed ${_erRemovedCount} old ER/OU/OC/IM/KE refs. Remaining: ${_erCleanedRefs.length}`);
+            // ═══ END v1.12.27 EO-MASTER-2b ═══
 
-              const beforeCount = (projectData.references || []).length;
-
-              projectData.references = (projectData.references || []).filter((r: any) => {
-                // Layer 1: remove by sectionKey
-                if (r.sectionKey && _erSectionKeys.has(r.sectionKey)) return false;
-                // Layer 2: remove by chapterPrefix (pre-migration leftovers without sectionKey)
-                if (!r.sectionKey && r.chapterPrefix && _erPrefixes.has(r.chapterPrefix)) return false;
-                return true;
-              });
-
-              const removedCount = beforeCount - projectData.references.length;
-              console.log(`[EO-MASTER-2b] ER pre-composite cleanup: removed ${removedCount} old ER/OU/OC/IM/KE refs from projectData.references. Remaining: ${projectData.references.length}`);
-            }
-            // ═══ END v1.12.26 EO-MASTER-2b ═══
-
-            // ═══ v1.12.26 – Purge stale [ER-*] ghost markers from ALL text fields ═══
+            // v1.12.27: Create local newData copy — AI calls and purge operate on this, not projectData
+            let newData: any = { ...projectData, references: _erCleanedRefs };
+            // ═══ v1.12.27 – Purge stale [ER-*] ghost markers from newData fields (not projectData) ═══
             {
               const _erGhostRegex = /\[ER-\d+\]/g;
               let _purgedCount = 0;
-              for (const f of Object.keys(projectData)) {
-                if (typeof (projectData as any)[f] === 'string') {
+              for (const f of Object.keys(newData)) {
+                if (f === 'references') continue; // refs already cleaned above
+                if (typeof newData[f] === 'string') {
                   _erGhostRegex.lastIndex = 0;
-                  if (_erGhostRegex.test((projectData as any)[f])) {
+                  if (_erGhostRegex.test(newData[f])) {
                     _erGhostRegex.lastIndex = 0;
-                    const before = (projectData as any)[f] as string;
-                    const after = before.replace(_erGhostRegex, '');
-                    const matches = before.match(_erGhostRegex);
+                    const matches = newData[f].match(_erGhostRegex);
                     _purgedCount += (matches || []).length;
-                    (projectData as any)[f] = after;
+                    newData[f] = newData[f].replace(_erGhostRegex, '');
                   }
-                } else if (Array.isArray((projectData as any)[f])) {
-                  const json = JSON.stringify((projectData as any)[f]);
+                } else if (Array.isArray(newData[f])) {
+                  const json = JSON.stringify(newData[f]);
                   _erGhostRegex.lastIndex = 0;
                   if (_erGhostRegex.test(json)) {
                     _erGhostRegex.lastIndex = 0;
                     const matches = json.match(_erGhostRegex);
                     _purgedCount += (matches || []).length;
-                    (projectData as any)[f] = JSON.parse(json.replace(_erGhostRegex, ''));
+                    newData[f] = JSON.parse(json.replace(_erGhostRegex, ''));
                   }
                 }
               }
               if (_purgedCount > 0) {
-                console.log(`[EO-176-PURGE] Removed ${_purgedCount} stale [ER-*] ghost markers from project text fields`);
+                console.log(`[EO-176-PURGE] Removed ${_purgedCount} stale [ER-*] ghost markers from newData fields`);
               }
             }
-            // ═══ END v1.12.26 purge ═══
+            // ═══ END v1.12.27 purge ═══
 
-            var _erRunningRefs: any[] = (projectData.references || []).slice();
+            var _erRunningRefs: any[] = _erCleanedRefs.slice();
 
             // ★ EO-175R PATCH 1: Fetch approved sources for ALL ER sections ONCE before the loop.
             // Without this, generateSectionContent for outputs/outcomes/impacts/kers receives
@@ -6424,12 +6417,12 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
 
                   if (action === 'fill' && emptyIndices.length > 0) {
                     generatedData = await generateTargetedFill(
-                      s, projectData, projectData[s], language, signal
+                      s, newData, newData[s], language, signal
                     );
                   } else {
                     const genMode = action === 'generate' ? 'regenerate' : action;
                     generatedData = await generateSectionContent(
-                      s, projectData, language, genMode, null, signal,
+                      s, newData, language, genMode, null, signal, // ★ v1.12.27: newData (not projectData) so AI sees prior ER sub-sections
                       _erApprovedSourcesBlock || undefined, // ★ EO-175R PATCH 1
                       _compRefsEnabled,
                       true,  // ★ EO-161: composite section
@@ -6481,25 +6474,6 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
                       _recordUsage(projectData as any, s, generatedData._usage, 'composite');
                     } catch (usageErr) { console.warn('[EO-160c] _recordUsage failed for', s, usageErr); }
                   }
-
-                  // ═══ v1.12.25 HOTFIX – Ghost-marker strip (AFTER generatedData is populated) ═══
-                  // Must run AFTER AI generates content, BEFORE reference pipeline renumbers markers.
-                  // Strips stale [ER/OU/OC/IM/KE-N] markers that may survive in AI output from
-                  // previous generations — prevents phantom ref markers in the new content.
-                  {
-                    const _staleErMarkerRegex = /\[(ER|OU|OC|IM|KE)-\d+\]/g;
-                    if (typeof generatedData === 'string') {
-                      generatedData = (generatedData as string).replace(_staleErMarkerRegex, '');
-                    } else if (generatedData !== null && typeof generatedData === 'object') {
-                      const _gdJson = JSON.stringify(generatedData);
-                      if (_staleErMarkerRegex.test(_gdJson)) {
-                        _staleErMarkerRegex.lastIndex = 0;
-                        generatedData = JSON.parse(_gdJson.replace(_staleErMarkerRegex, ''));
-                      }
-                    }
-                    console.log('[EO-GHOST-STRIP] Stale ER/OU/OC/IM/KE markers stripped from generatedData[' + s + '] before reference pipeline');
-                  }
-                  // ═══ END v1.12.25 HOTFIX ═══
 
                   // [EO-130i] Guard: only run reference pipeline when refs are enabled for this chapter
                   if (_compRefsEnabled) {
@@ -6577,6 +6551,19 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
 
                       return next;
                     });
+
+                    // v1.12.27: Update local newData for subsequent AI calls
+                    // (so impacts sees outputs+outcomes, kers sees all three)
+                    if (Array.isArray(generatedData)) {
+                      newData[s] = generatedData;
+                    } else if (generatedData && typeof generatedData === 'object' && !Array.isArray(generatedData)) {
+                      const unwrapped = (generatedData as any)[s] || Object.values(generatedData).find((v: any) => Array.isArray(v));
+                      newData[s] = unwrapped || generatedData;
+                    } else {
+                      newData[s] = generatedData;
+                    }
+                    newData.references = _erRunningRefs.slice();
+
                   } else {
                     // [EO-130i] Refs OFF — strip markers, skip pipeline, update state directly
                     console.log('[EO-130i] Refs OFF — skipping _runFullReferencePipeline for "' + s + '"');
