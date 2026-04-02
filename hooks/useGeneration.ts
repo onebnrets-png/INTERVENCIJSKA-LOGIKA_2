@@ -6324,19 +6324,48 @@ if (_compositeElapsedMs > 600000 && successCount === totalSteps) {
             // ★ EO-MASTER-2b FIX 2: NEVER mutate projectData (React state prop).
             // Previous code did (projectData as any).references = ... which mutated React state in-place.
             // FIX: Create local cleaned copy for _erRunningRefs. projectData stays untouched.
+            // ★ v1.12.24: CHANGE 1 — Remove ALL Expected Results refs regardless of chapterPrefix.
+            // Before v1.12.21 all ER sub-sections shared chapterPrefix='ER'. After _migrateERtoSplitPrefixes
+            // they have chapterPrefix OU/OC/IM/KE. Both old and migrated refs must be removed so the
+            // pipeline starts clean. Primary filter is sectionKey (same as PA/GO/SO/PI approach).
+            // chapterPrefix filter is a safety net for refs missing a sectionKey.
             var _erCleanedRefs: any[] = [];
             if (Array.isArray(projectData.references)) {
               const _erPreBefore = projectData.references.length;
-              const _erChildKeys = ['outputs', 'outcomes', 'impacts', 'kers'];
+              const _erSectionKeys = new Set(['outputs', 'outcomes', 'impacts', 'kers', 'expectedResults']);
+              const _erPrefixes = new Set(['ER', 'OU', 'OC', 'IM', 'KE']);
               _erCleanedRefs = projectData.references.filter(function(r: any) {
-                if (!r.sectionKey) return true;
-                if (_erChildKeys.indexOf(r.sectionKey) >= 0) return false;
-                if (getChapterForSection(r.sectionKey) === 'expectedResults') return false;
+                // Primary: remove by sectionKey (works for all refs that have one)
+                if (r.sectionKey && _erSectionKeys.has(r.sectionKey)) return false;
+                // Safety net: also remove by chapterPrefix for refs without sectionKey
+                // (catches pre-migration ER refs and post-migration OU/OC/IM/KE refs)
+                if (!r.sectionKey && r.chapterPrefix && _erPrefixes.has(r.chapterPrefix)) return false;
+                // Secondary: catch any remaining expectedResults-chapter refs
+                if (r.sectionKey && getChapterForSection(r.sectionKey) === 'expectedResults') return false;
                 return true;
               });
               const _erPreRemoved = _erPreBefore - _erCleanedRefs.length;
-              if (_erPreRemoved > 0) {
-                console.log('[EO-MASTER-2b] ER pre-composite cleanup (LOCAL copy): removed ' + _erPreRemoved + ' old refs. Kept: ' + _erCleanedRefs.length + '. projectData.references UNTOUCHED: ' + projectData.references.length);
+              console.log('[EO-MASTER-2b] ER pre-composite cleanup (LOCAL copy): removed ' + _erPreRemoved + ' old ER/OU/OC/IM/KE refs. Kept: ' + _erCleanedRefs.length + '. projectData.references UNTOUCHED: ' + projectData.references.length);
+            }
+
+            // ★ v1.12.24: CHANGE 2 — Strip stale ER/OU/OC/IM/KE markers from text fields
+            // before regeneration to prevent ghost markers surviving into newly generated text.
+            var _staleErMarkerRegex = /\[(ER|OU|OC|IM|KE)-\d+\]/g;
+            var _erTextFields = ['outputs', 'outcomes', 'impacts', 'kers'];
+            for (var _etf of _erTextFields) {
+              if (typeof (newData as any)[_etf] === 'string') {
+                var _etfBefore = (newData as any)[_etf] as string;
+                var _etfAfter = _etfBefore.replace(_staleErMarkerRegex, '');
+                if (_etfAfter !== _etfBefore) {
+                  (newData as any)[_etf] = _etfAfter;
+                }
+              } else if (Array.isArray((newData as any)[_etf])) {
+                var _etfArrJson = JSON.stringify((newData as any)[_etf]);
+                if (_staleErMarkerRegex.test(_etfArrJson)) {
+                  _staleErMarkerRegex.lastIndex = 0; // reset stateful regex after .test()
+                  (newData as any)[_etf] = JSON.parse(_etfArrJson.replace(_staleErMarkerRegex, ''));
+                }
+                _staleErMarkerRegex.lastIndex = 0;
               }
             }
 
